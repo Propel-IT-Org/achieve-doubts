@@ -1,5 +1,6 @@
-import { createMiddleware } from "hono/factory";
-import { auth, type Session, type User } from "../lib/auth";
+﻿import { createMiddleware } from "hono/factory";
+import type { Session, User } from "../lib/auth";
+import type { AppEnv } from "../lib/di";
 import type { AppRole } from "../lib/permissions";
 
 export type AuthVariables = {
@@ -7,39 +8,52 @@ export type AuthVariables = {
 	session: Session | null;
 };
 
-export const authContextMiddleware = createMiddleware<{
-	Variables: AuthVariables;
-}>(async (c, next) => {
-	const sessionData = await auth.api.getSession({
-		headers: c.req.raw.headers,
-	});
+type AuthContextEnv = {
+	Variables: {
+		user: User | null;
+		session: Session | null;
+	};
+} & AppEnv;
 
-	c.set("user", sessionData?.user ?? null);
-	c.set("session", sessionData?.session ?? null);
-	await next();
-});
+type AuthenticatedEnv = {
+	Variables: {
+		user: User;
+		session: Session;
+	};
+} & AppEnv;
 
-export const requireAuth = createMiddleware<{
-	Variables: { user: User; session: Session };
-}>(async (c, next) => {
-	const sessionData = await auth.api.getSession({
-		headers: c.req.raw.headers,
-	});
+export const authContextMiddleware = createMiddleware<AuthContextEnv>(
+	async (c, next) => {
+		const sessionData = await c.var.di.get("auth").api.getSession({
+			headers: c.req.raw.headers,
+		});
 
-	if (!sessionData) {
-		return c.json({ error: "Unauthorized" }, 401);
-	}
+		c.set("user", sessionData?.user ?? null);
+		c.set("session", sessionData?.session ?? null);
+		await next();
+	},
+);
 
-	c.set("user", sessionData.user);
-	c.set("session", sessionData.session);
-	await next();
-});
+export const requireAuth = createMiddleware<AuthenticatedEnv>(
+	async (c, next) => {
+		const sessionData = await c.var.di.get("auth").api.getSession({
+			headers: c.req.raw.headers,
+		});
+
+		if (!sessionData) {
+			return c.json({ error: "Unauthorized" }, 401);
+		}
+
+		c.set("user", sessionData.user);
+		c.set("session", sessionData.session);
+		await next();
+	},
+);
 
 export function requireRole(allowedRoles: AppRole[]) {
-	return createMiddleware<{
-		Variables: { user: User; session: Session };
-	}>(async (c, next) => {
-		const sessionData = await auth.api.getSession({
+	return createMiddleware<AuthenticatedEnv>(async (c, next) => {
+		const authInstance = c.var.di.get("auth");
+		const sessionData = await authInstance.api.getSession({
 			headers: c.req.raw.headers,
 		});
 

@@ -1,5 +1,6 @@
 ﻿import { inferdiHono } from "@inferdi/hono";
 import { Hono } from "hono";
+import type { BunWebSocketData } from "hono/bun";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { env } from "./env";
@@ -11,10 +12,10 @@ import { solutionsRouter } from "./modules/solutions/solutions.router";
 import { uploadRouter } from "./modules/upload/upload.router";
 import { getServer, websocket } from "./ws/hub";
 
-const app = new Hono<AppEnv>();
+const baseApp = new Hono<AppEnv>();
 
-app.use("*", logger());
-app.use(
+baseApp.use("*", logger());
+baseApp.use(
 	"*",
 	cors({
 		origin: [env.CORS_ORIGIN, "http://localhost:5173", "http://localhost:3000"],
@@ -31,17 +32,25 @@ app.use(
 	}),
 );
 
-app.use(
+baseApp.use(
 	"*",
 	inferdiHono({
-		container,
+		container: container,
 		createScope: (_root, c) => {
-			return _root.createScope({ ws: getServer(c) });
+			let wsServer: Bun.ServerWebSocket<BunWebSocketData> | undefined;
+			try {
+				if (c.env && typeof c.env === "object") {
+					wsServer = getServer(c);
+				}
+			} catch {
+				// Safe in testClient/mock fetch mode
+			}
+			return _root.createScope({ ws: wsServer as never });
 		},
 	}),
 );
 
-const routes = app
+const app = baseApp
 	.basePath("/api")
 	.route("/auth", authRouter)
 	.route("/doubts", doubtsRouter)
@@ -49,7 +58,7 @@ const routes = app
 	.route("/upload", uploadRouter)
 	.route("/attestation", attestationRouter);
 
-export type AppType = typeof routes;
+export type AppType = typeof app;
 
 export default {
 	port: env.PORT,

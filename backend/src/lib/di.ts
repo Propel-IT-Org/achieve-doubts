@@ -7,13 +7,13 @@ import { DoubtService } from "../modules/doubts/doubts.service";
 import { SolutionService } from "../modules/solutions/solutions.service";
 import { UploadService } from "../modules/upload/upload.service";
 import { FeedHub } from "../ws/hub";
-import { auth } from "./auth";
+import { createAuth } from "./auth";
 
 export function buildContainer() {
 	return new Container()
 		.registerFactory("config", () => ({ version: "v1" }))
-		.registerFactory("auth", () => auth)
 		.registerFactory("db", createDatabase)
+		.registerFactory("auth", (c) => createAuth(c.get("db")), ["db"])
 		.registerClass("doubts", DoubtService, ["db"])
 		.registerClass("solutions", SolutionService, ["db"])
 		.registerClass("upload", UploadService, [])
