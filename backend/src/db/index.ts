@@ -3,7 +3,9 @@ import postgres from "postgres";
 import { env } from "../env";
 import * as schema from "./schema";
 
-const queryClient = postgres(env.DATABASE_URL);
-export const db = drizzle(queryClient, { schema });
-export type DB = typeof db;
-export * from "./schema";
+export function createDatabase() {
+	const queryClient = postgres(env.DATABASE_URL);
+	return drizzle(queryClient, { schema });
+}
+
+export type DB = ReturnType<typeof createDatabase>;

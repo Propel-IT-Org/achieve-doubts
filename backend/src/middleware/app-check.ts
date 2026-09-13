@@ -1,4 +1,4 @@
-import { createMiddleware } from "hono/factory";
+﻿import { createMiddleware } from "hono/factory";
 import { verify } from "hono/jwt";
 import { env } from "../env";
 
@@ -16,7 +16,7 @@ export const appCheckMiddleware = createMiddleware(async (c, next) => {
 	}
 
 	try {
-		const payload = await verify(token, env.ATTESTATION_SECRET);
+		const payload = await verify(token, env.ATTESTATION_SECRET, "HS256");
 		if (!payload || payload.iss !== "doubt-app-attestation") {
 			return c.json({ error: "Invalid attestation source" }, 403);
 		}
