@@ -1,6 +1,9 @@
-import type { ServerWebSocket } from "bun";
-import { createBunWebSocket, type BunWebSocketData, getBunServer  } from "hono/bun";
-
+﻿import type { ServerWebSocket } from "bun";
+import {
+	type BunWebSocketData,
+	createBunWebSocket,
+	getBunServer,
+} from "hono/bun";
 
 export type WSFeedEvent =
 	| "DOUBT_CREATED"
@@ -13,27 +16,30 @@ export type WSClientData = {
 	role?: string;
 };
 
-const { upgradeWebSocket, websocket } = createBunWebSocket<ServerWebSocket<BunWebSocketData>>();
+const { upgradeWebSocket, websocket } =
+	createBunWebSocket<ServerWebSocket<BunWebSocketData>>();
 
 export class FeedHub {
-  static FEED_TOPIC = "doubts:feed";
+	static FEED_TOPIC = "doubts:feed";
 
-  constructor(private ws: ServerWebSocket<BunWebSocketData>) {
+	constructor(private ws: ServerWebSocket<BunWebSocketData>) {}
 
-  }
-
-  subscribe() {
+	subscribe(socket?: ServerWebSocket<BunWebSocketData>) {
 		try {
-			this.ws.subscribe(FeedHub.FEED_TOPIC);
+			const target = socket ?? this.ws;
+			target?.subscribe?.(FeedHub.FEED_TOPIC);
 		} catch {
 			// fallback if subscribe isn't supported
-    }
+		}
 	}
 
-	unsubscribe() {
+	unsubscribe(socket?: ServerWebSocket<BunWebSocketData>) {
 		try {
-			if (this.ws.isSubscribed(FeedHub.FEED_TOPIC)) this.ws.unsubscribe(FeedHub.FEED_TOPIC);
-    } catch {
+			const target = socket ?? this.ws;
+			if (target?.isSubscribed?.(FeedHub.FEED_TOPIC)) {
+				target.unsubscribe(FeedHub.FEED_TOPIC);
+			}
+		} catch {
 			// ignore
 		}
 	}
@@ -46,7 +52,7 @@ export class FeedHub {
 		});
 
 		try {
-			this.ws.publish(FeedHub.FEED_TOPIC, payload);
+			this.ws?.publish?.(FeedHub.FEED_TOPIC, payload);
 		} catch {
 			// ignore
 		}

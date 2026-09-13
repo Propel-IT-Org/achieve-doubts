@@ -1,20 +1,16 @@
-import { zValidator } from "@hono/zod-validator";
+﻿import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
-import { requireAuth, requireRole } from "../../middleware/auth";
-import { feedHub } from "../../ws/hub";
+import type { AppEnv } from "../../lib/di";
+import { requireRole } from "../../middleware/auth";
 import {
 	createSolutionSchema,
 	solutionParamSchema,
 } from "./solutions.schema";
-import {
-	getSolutionsByDoubtId,
-	submitSolutionAtomic,
-} from "./solutions.service";
 
-export const solutionsRouter = new Hono()
+export const solutionsRouter = new Hono<AppEnv>()
 	.get("/doubt/:doubtId", zValidator("param", solutionParamSchema), async (c) => {
 		const { doubtId } = c.req.valid("param");
-		const items = await getSolutionsByDoubtId(doubtId);
+		const items = await c.var.di.get("solutions").getSolutionsByDoubtId(doubtId);
 		return c.json(items);
 	})
 	.post(
@@ -24,7 +20,9 @@ export const solutionsRouter = new Hono()
 		async (c) => {
 			const user = c.var.user;
 			const input = c.req.valid("json");
-			const result = await submitSolutionAtomic(user.id, input);
+			const result = await c.var.di
+				.get("solutions")
+				.submitSolutionAtomic(user.id, input);
 
 			if (!result) {
 				return c.json(
@@ -33,7 +31,7 @@ export const solutionsRouter = new Hono()
 				);
 			}
 
-			feedHub.broadcast("DOUBT_RESOLVED", {
+			c.var.di.get("feed").broadcast("DOUBT_RESOLVED", {
 				doubtId: result.doubt.id,
 				solverId: user.id,
 			});

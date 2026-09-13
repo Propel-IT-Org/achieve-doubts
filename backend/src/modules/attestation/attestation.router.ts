@@ -1,15 +1,10 @@
-import { Hono } from "hono";
-import { sign } from "hono/jwt";
-import { env } from "../../env";
+﻿import { Hono } from "hono";
+import type { AppEnv } from "../../lib/di";
 
-export const attestationRouter = new Hono().post("/exchange", async (c) => {
-	const token = await sign(
-		{
-			iss: "doubt-app-attestation",
-			exp: Math.floor(Date.now() / 1000) + 60 * 60,
-		},
-		env.ATTESTATION_SECRET,
-	);
-
-	return c.json({ token });
-});
+export const attestationRouter = new Hono<AppEnv>().post(
+	"/exchange",
+	async (c) => {
+		const token = await c.var.di.get("attestation").generateToken();
+		return c.json({ token });
+	},
+);

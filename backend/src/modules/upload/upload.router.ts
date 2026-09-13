@@ -1,7 +1,7 @@
-import { zValidator } from "@hono/zod-validator";
+﻿import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
-import { createPresignedUploadUrl } from "../../lib/s3";
+import type { AppEnv } from "../../lib/di";
 import { requireAuth } from "../../middleware/auth";
 
 const presignSchema = z.object({
@@ -9,7 +9,7 @@ const presignSchema = z.object({
 	contentType: z.string().min(1),
 });
 
-export const uploadRouter = new Hono()
+export const uploadRouter = new Hono<AppEnv>()
 	.post(
 		"/presign",
 		requireAuth,
@@ -17,10 +17,9 @@ export const uploadRouter = new Hono()
 		async (c) => {
 			const { fileName, contentType } = c.req.valid("json");
 			const user = c.var.user;
-			const ext = fileName.split(".").pop() || "bin";
-			const key = `uploads/${user.id}/${Date.now()}-${crypto.randomUUID()}.${ext}`;
-
-			const presigned = await createPresignedUploadUrl(key, contentType);
+			const presigned = await c.var.di
+				.get("upload")
+				.createPresignedUpload(fileName, contentType, user.id);
 			return c.json(presigned);
 		},
 	)

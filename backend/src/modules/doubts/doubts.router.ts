@@ -1,4 +1,4 @@
-import { zValidator } from "@hono/zod-validator";
+﻿import { zValidator } from "@hono/zod-validator";
 import { type Context, Hono } from "hono";
 import type { BlankInput } from "hono/types";
 import type { AppEnv } from "../../lib/di";
@@ -96,15 +96,14 @@ export const doubtsRouter = new Hono<AppEnv>()
 			const feedHub = c.var.di.get("feed");
 			return {
 				onOpen(_event, ws) {
-					feedHub.subscribe();
+					feedHub.subscribe(ws.raw);
 				},
 				onClose(_event, ws) {
-					feedHub.unsubscribe();
+					feedHub.unsubscribe(ws.raw);
 				},
 				onError(_event, ws) {
-					feedHub.unsubscribe();
+					feedHub.unsubscribe(ws.raw);
 				},
-				// onMessage,
 			};
 		}),
 	);

@@ -1,10 +1,10 @@
 ﻿import { createMiddleware } from "hono/factory";
-import { verify } from "hono/jwt";
 import { env } from "../env";
+import type { AppEnv } from "../lib/di";
 
 const IS_TURNSTILE_SUSPENDED = true;
 
-export const appCheckMiddleware = createMiddleware(async (c, next) => {
+export const appCheckMiddleware = createMiddleware<AppEnv>(async (c, next) => {
 	if (IS_TURNSTILE_SUSPENDED || env.NODE_ENV === "development") {
 		await next();
 		return;
@@ -15,13 +15,9 @@ export const appCheckMiddleware = createMiddleware(async (c, next) => {
 		return c.json({ error: "Missing App-Check attestation" }, 403);
 	}
 
-	try {
-		const payload = await verify(token, env.ATTESTATION_SECRET, "HS256");
-		if (!payload || payload.iss !== "doubt-app-attestation") {
-			return c.json({ error: "Invalid attestation source" }, 403);
-		}
-	} catch {
-		return c.json({ error: "Attestation expired or corrupt" }, 403);
+	const isValid = await c.var.di.get("attestation").verifyToken(token);
+	if (!isValid) {
+		return c.json({ error: "Invalid or expired attestation" }, 403);
 	}
 
 	await next();

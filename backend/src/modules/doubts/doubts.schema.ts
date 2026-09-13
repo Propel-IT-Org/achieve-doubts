@@ -4,7 +4,7 @@ export const createDoubtSchema = z.object({
 	title: z.string().min(3).max(255),
 	description: z.string().min(10),
 	subject: z.string().min(2).max(64),
-	imageUrl: z.string().url().optional().nullable(),
+	imageUrl: z.url().optional().nullable(),
 });
 
 export const listDoubtsQuerySchema = z.object({
