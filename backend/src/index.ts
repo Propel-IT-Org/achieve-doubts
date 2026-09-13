@@ -1,8 +1,7 @@
 ﻿import { inferdiHono } from "@inferdi/hono";
-import { type Context, Hono } from "hono";
+import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
-import type { BlankInput } from "hono/types";
 import { env } from "./env";
 import { type AppEnv, container } from "./lib/di";
 import { attestationRouter } from "./modules/attestation/attestation.router";
@@ -10,7 +9,7 @@ import { authRouter } from "./modules/auth/auth.router";
 import { doubtsRouter } from "./modules/doubts/doubts.router";
 import { solutionsRouter } from "./modules/solutions/solutions.router";
 import { uploadRouter } from "./modules/upload/upload.router";
-import { getServer, upgradeWebSocket, websocket } from "./ws/hub";
+import { getServer, websocket } from "./ws/hub";
 
 const app = new Hono<AppEnv>();
 

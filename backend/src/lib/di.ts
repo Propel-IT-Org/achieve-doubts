@@ -9,17 +9,22 @@ import { UploadService } from "../modules/upload/upload.service";
 import { FeedHub } from "../ws/hub";
 import { auth } from "./auth";
 
-export const container = new Container()
-	.registerValue("config", { version: "v1" })
-	.registerValue("auth", auth)
-	.registerFactory("db", createDatabase)
-	.registerClass("doubts", DoubtService, ["db"])
-	.registerClass("solutions", SolutionService, ["db"])
-	.registerClass("upload", UploadService, [])
-	.registerClass("attestation", AttestationService, [])
-	.declareScopeInputs<{ ws: Bun.ServerWebSocket<BunWebSocketData> }>()
-	.registerClass("feed", FeedHub, ["ws"], "scoped");
+export function buildContainer() {
+	return new Container()
+		.registerFactory("config", () => ({ version: "v1" }))
+		.registerFactory("auth", () => auth)
+		.registerFactory("db", createDatabase)
+		.registerClass("doubts", DoubtService, ["db"])
+		.registerClass("solutions", SolutionService, ["db"])
+		.registerClass("upload", UploadService, [])
+		.registerClass("attestation", AttestationService, [])
+		.declareScopeInputs<{ ws: Bun.ServerWebSocket<BunWebSocketData> }>()
+		.registerClass("feed", FeedHub, ["ws"], "scoped");
+}
 
+export const container = buildContainer();
+
+export type AppContainer = ReturnType<typeof buildContainer>;
 export type AppEnv = InferdiHonoScopeEnv<
 	ReturnType<
 		typeof container.createScope<{ ws: Bun.ServerWebSocket<BunWebSocketData> }>
