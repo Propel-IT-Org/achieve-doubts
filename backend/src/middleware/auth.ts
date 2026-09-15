@@ -1,7 +1,8 @@
 ﻿import { createMiddleware } from "hono/factory";
 import type { AuthType } from "../lib/auth";
 import type { AppEnv } from "../lib/di";
-import type { AppRole } from "../lib/permissions";
+import type { AppRole, statement } from "../lib/permissions";
+import { HTTPException } from "hono/http-exception";
 
 type AuthContextEnv = {
   Variables: AuthType;
@@ -62,3 +63,34 @@ export function requireRole(allowedRoles: AppRole[]) {
     await next();
   });
 }
+
+type Statement = typeof statement;
+export type PermissionCheck = {
+  [K in keyof Statement]?: Statement[K][number][];
+};
+/**
+ * 2. Granular Permission Guard Middleware Factory
+ * Checks whether the current user has the required action(s) on the entity.
+ */
+export const requirePermission = (permissions: PermissionCheck) =>
+  createMiddleware<AuthenticatedEnv>(async (c, next) => {
+    const user = c.get("user");
+    const auth = c.var.di.get("auth");
+
+    // Server-side permission check via Better Auth API
+    const hasPermission = await auth.api.userHasPermission({
+      body: {
+        userId: user.id,
+        permissions,
+      },
+      request: c.req.raw,
+    });
+
+    if (!hasPermission) {
+      throw new HTTPException(403, {
+        message: "Forbidden: You do not possess the required permissions.",
+      });
+    }
+
+    await next();
+  });

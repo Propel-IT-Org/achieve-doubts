@@ -13,55 +13,55 @@ import { uploadRouter } from "./modules/upload/upload.router";
 import { getServer, websocket } from "./ws/hub";
 
 export function createApp(customContainer: AppContainer = container) {
-	const app = new Hono<AppEnv>();
+  const app = new Hono<AppEnv>();
 
-	app.use("*", logger());
-	app.use(
-		"*",
-		cors({
-			origin: [
-				env.CORS_ORIGIN,
-				"http://localhost:5173",
-				"http://localhost:3000",
-			],
-			credentials: true,
-			allowHeaders: [
-				"Content-Type",
-				"Authorization",
-				"X-App-Check-Token",
-				"Cookie",
-			],
-			allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-			exposeHeaders: ["Content-Length"],
-			maxAge: 600,
-		}),
-	);
+  app.use("*", logger());
+  app.use(
+    "*",
+    cors({
+      origin: [
+        env.CORS_ORIGIN,
+        "http://localhost:5173",
+        "http://localhost:3000",
+      ],
+      credentials: true,
+      allowHeaders: [
+        "Content-Type",
+        "Authorization",
+        "X-App-Check-Token",
+        "Cookie",
+      ],
+      allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      exposeHeaders: ["Content-Length"],
+      maxAge: 600,
+    }),
+  );
 
-	app.use(
-		"*",
-		inferdiHono({
-			container: customContainer,
-			createScope: (_root, c) => {
-				let wsServer: Bun.ServerWebSocket<BunWebSocketData> | undefined;
-				try {
-					if (c.env && typeof c.env === "object") {
-						wsServer = getServer(c);
-					}
-				} catch {
-					// Safe in testClient/mock fetch mode
-				}
-				return _root.createScope({ ws: wsServer as never });
-			},
-		}),
-	);
+  app.use(
+    "*",
+    inferdiHono({
+      container: customContainer,
+      createScope: (_root, c) => {
+        let wsServer: Bun.ServerWebSocket<BunWebSocketData> | undefined;
+        try {
+          if (c.env && typeof c.env === "object") {
+            wsServer = getServer(c);
+          }
+        } catch {
+          // Safe in testClient/mock fetch mode
+        }
+        return _root.createScope({ ws: wsServer as never });
+      },
+    }),
+  );
 
-	return app
-		.basePath("/api")
-		.route("/auth", authRouter)
-		.route("/doubts", doubtsRouter)
-		.route("/solutions", solutionsRouter)
-		.route("/upload", uploadRouter)
-		.route("/attestation", attestationRouter);
+  return app
+    .basePath("/api")
+    .route("/auth", authRouter)
+    .route("/doubts", doubtsRouter)
+    .route("/solutions", solutionsRouter)
+    .route("/upload", uploadRouter)
+    .route("/attestation", attestationRouter);
 }
 
 const app = createApp();
@@ -69,7 +69,7 @@ const app = createApp();
 export type AppType = typeof app;
 
 export default {
-	port: env.PORT,
-	fetch: app.fetch,
-	websocket,
+  port: env.PORT,
+  fetch: app.fetch,
+  websocket,
 };
