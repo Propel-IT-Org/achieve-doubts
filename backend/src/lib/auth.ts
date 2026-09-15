@@ -37,3 +37,7 @@ export function createAuth(database: DB) {
 export type Auth = ReturnType<typeof createAuth>;
 export type Session = Auth["$Infer"]["Session"]["session"];
 export type User = Auth["$Infer"]["Session"]["user"];
+export type AuthType = {
+	user: User | null;
+	session: Session | null;
+};
