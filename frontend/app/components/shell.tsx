@@ -11,15 +11,9 @@ import {
   User,
   UserCheck,
 } from "lucide-react";
-import { useSession, signOut, type SessionUser } from "~/lib/session";
+import { useSession, signOut, isSolver, type SessionUser } from "~/lib/session";
 import { shortName } from "~/lib/format";
 import { Avatar, Brand, useOutside } from "./primitives";
-
-const SOLVER_ROLES = ["solver", "adminSolver", "staff"];
-
-export function isSolverRole(role: string | null | undefined) {
-  return Boolean(role && SOLVER_ROLES.includes(role));
-}
 
 export function Header({ unread = 0 }: { unread?: number }) {
   const { user } = useSession();
@@ -39,7 +33,7 @@ export function Header({ unread = 0 }: { unread?: number }) {
 
   const links: Array<[string, string]> = [];
   if (user?.role === "student") links.push(["/ask", "Ask a question"], ["/me", "My profile"]);
-  if (isSolverRole(user?.role)) links.push(["/solver", "Dashboard"]);
+  if (isSolver(user?.role)) links.push(["/solver", "Dashboard"]);
 
   const go = (to: string) => {
     setUserOpen(false);
@@ -143,7 +137,7 @@ export function Header({ unread = 0 }: { unread?: number }) {
                         My profile
                       </button>
                     )}
-                    {isSolverRole(user.role) && (
+                    {isSolver(user.role) && (
                       <button
                         type="button"
                         role="menuitem"
@@ -212,7 +206,7 @@ export function BottomNav({ unread = 0 }: { unread?: number }) {
       ["/notifications", Bell, "Alerts"],
       ["/me", User, "Profile"],
     );
-  if (isSolverRole(user?.role))
+  if (isSolver(user?.role))
     items.push(["/solver", LayoutDashboard, "Dashboard"], ["/notifications", Bell, "Alerts"]);
 
   return (

@@ -82,6 +82,3 @@ export const staff = ac.newRole({
 export const roles = { student, solver, adminSolver, staff };
 
 export type AppRole = keyof typeof roles;
-
-/** Roles that can hold a lock and answer questions. */
-export const SOLVER_ROLES: AppRole[] = ["solver", "adminSolver", "staff"];

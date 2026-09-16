@@ -73,10 +73,11 @@ export class QuestionsService {
     const limit = query.limit;
     const decodedCursor = decodeCursor(query.cursor);
 
-    const conditions = [
-      isNull(questions.deletedAt),
-      eq(questions.status, query.status ?? "waiting"),
-    ];
+    // No status filter means *every* status. Defaulting to "waiting" here
+    // silently hid every answered/satisfied question from the list's own
+    // "All statuses" view; solvers browsing open work pass ?status=waiting.
+    const conditions = [isNull(questions.deletedAt)];
+    if (query.status) conditions.push(eq(questions.status, query.status));
 
     if (query.subject) conditions.push(eq(questions.subjectId, query.subject));
     if (query.book) conditions.push(eq(questions.bookId, query.book));
@@ -86,10 +87,18 @@ export class QuestionsService {
 
     if (decodedCursor) {
       const cursorDate = new Date(decodedCursor.askedAt);
+      // Postgres stores timestamps to microsecond precision, but the cursor
+      // round-trips through toISOString(), which only carries milliseconds.
+      // So a row written at .577123 is neither `< .577000` nor `= .577000`,
+      // and an exact-equality tiebreak drops it: following the cursor
+      // returned an empty page and silently lost the record. Compare against
+      // the whole millisecond the cursor landed in instead.
+      const cursorMsEnd = new Date(cursorDate.getTime() + 1);
       const keyset = or(
         lt(questions.askedAt, cursorDate),
         and(
-          eq(questions.askedAt, cursorDate),
+          gte(questions.askedAt, cursorDate),
+          lt(questions.askedAt, cursorMsEnd),
           lt(questions.id, decodedCursor.id),
         ),
       );
@@ -221,9 +230,16 @@ export class QuestionsService {
   }
 
   /**
-   * Runs inside the lock transaction so the count and the claim are
-   * serialized together. A correlated raw-SQL count expresses "the latest
-   * non-deleted thread message is from the asker" most directly.
+   * Counts the solver's open follow-ups.
+   *
+   * Being inside the transaction is NOT by itself enough to serialize this
+   * against the claim: under READ COMMITTED a plain count doesn't block a
+   * concurrent writer, so two parallel lock attempts by the same solver could
+   * both read a count below the threshold and both proceed. lockQuestion
+   * takes a per-solver advisory lock to close that window.
+   *
+   * A correlated raw-SQL count expresses "the latest non-deleted thread
+   * message is from the asker" most directly.
    */
   private async countBlockingFollowups(
     executor: DB,
@@ -254,6 +270,13 @@ export class QuestionsService {
 
   async lockQuestion(questionId: number, solverId: string): Promise<LockResult> {
     return this.db.transaction(async (tx) => {
+      // Serializes concurrent lock attempts *by this solver* for the duration
+      // of the transaction, so the follow-up-block check below can't be
+      // raced. Keyed on the solver, so it never blocks a different solver —
+      // the contention that matters (two solvers racing for one question) is
+      // still resolved by the atomic UPDATE, not by this lock.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${solverId}))`);
+
       const blocking = await this.countBlockingFollowups(
         tx as unknown as DB,
         solverId,

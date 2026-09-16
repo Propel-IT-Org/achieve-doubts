@@ -12,12 +12,6 @@ export const ALLOWED_CONTENT_TYPES = [
   "audio/mp4",
 ] as const;
 
-export type AllowedContentType = (typeof ALLOWED_CONTENT_TYPES)[number];
-
-export function isAllowedContentType(value: string): value is AllowedContentType {
-  return (ALLOWED_CONTENT_TYPES as readonly string[]).includes(value);
-}
-
 /**
  * Confirms a client-submitted media URL actually came from our own presign
  * flow rather than being an arbitrary attacker-supplied address. Every

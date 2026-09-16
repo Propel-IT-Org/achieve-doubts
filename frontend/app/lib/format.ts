@@ -62,10 +62,6 @@ export function pct(rate: number | null | undefined): string {
   return `${Math.round(rate * 100)}%`;
 }
 
-export function ratio(a: number, b: number): string {
-  return b ? `${Math.round((a / b) * 100)}%` : "–";
-}
-
 export function fmt(n: number): string {
   return Number(n).toLocaleString("en-US");
 }
@@ -77,5 +73,3 @@ export const STATUS_LABEL: Record<string, string> = {
   satisfied: "Solved",
   unsatisfied: "Not satisfied",
 };
-
-export const ANSWERED_STATUSES = ["answered", "satisfied", "unsatisfied"];

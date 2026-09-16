@@ -120,12 +120,6 @@ export type SolutionRow = {
   deletedAt: string | null;
 };
 
-export const openCountKey = () => ["questions", "open-count"] as const;
-export const fetchOpenCount = () =>
-  api.api.questions.open.count.$get().then((r) =>
-    unwrap<{ count: number }>(r),
-  );
-
 /**
  * Cursor-paginated questions list.
  *
@@ -307,16 +301,6 @@ export const fetchSolverProfile = (id: string) =>
     .$get({ param: { id } })
     .then((r) => unwrap<SolverProfile>(r));
 
-export type ReportRow = {
-  id: number;
-  questionId: number;
-  reason: string;
-  text: string;
-  status: string;
-  createdAt: string;
-  resolvedAt: string | null;
-};
-
-export const myReportsKey = () => ["me", "reports"] as const;
-export const fetchMyReports = () =>
-  api.api.me.reports.$get().then((r) => unwrap<ReportRow[]>(r));
+// The student-facing "my reports" list isn't built yet; its key/fetcher pair
+// went with it rather than sitting here unused. GET /api/me/reports still
+// exists server-side for when that screen lands.

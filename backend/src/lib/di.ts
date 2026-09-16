@@ -15,7 +15,6 @@ import { createAuth } from "./auth";
 
 export function buildContainer() {
 	return new Container()
-		.registerFactory("config", () => ({ version: "v1" }))
 		.registerFactory("db", createDatabase)
 		.registerFactory("auth", (c) => createAuth(c.get("db")), ["db"])
 		.registerClass("upload", UploadService, [])

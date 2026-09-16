@@ -1,4 +1,4 @@
-import { and, eq, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import type { DB } from "../db";
 import { lockEvents, notifications, questions } from "../db/schema";
 import type { FeedHub } from "../ws/hub";
@@ -37,10 +37,18 @@ export async function sweepExpiredLocks(db: DB, feed?: FeedHub) {
   for (const row of expired) {
     // `returning()` gives the post-update row, so solverId is already null —
     // the previous holder is recovered from the most recent lock event.
+    // "override" counts: a taken-over question's current holder is whoever
+    // overrode it, so matching only "lock" would credit the expiry to the
+    // original locker instead.
     const [lastLock] = await db
       .select({ solverId: lockEvents.solverId })
       .from(lockEvents)
-      .where(and(eq(lockEvents.questionId, row.id), eq(lockEvents.action, "lock")))
+      .where(
+        and(
+          eq(lockEvents.questionId, row.id),
+          inArray(lockEvents.action, ["lock", "override"]),
+        ),
+      )
       .orderBy(sql`${lockEvents.at} desc`)
       .limit(1);
 

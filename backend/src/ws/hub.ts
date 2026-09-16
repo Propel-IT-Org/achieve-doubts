@@ -13,11 +13,6 @@ export type WSFeedEvent =
 	| "QUESTION_EXPIRED"
 	| "QUESTION_ANSWERED";
 
-export type WSClientData = {
-	userId?: string;
-	role?: string;
-};
-
 const { upgradeWebSocket, websocket } =
 	createBunWebSocket<ServerWebSocket<BunWebSocketData>>();
 
