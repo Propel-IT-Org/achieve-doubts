@@ -1,6 +1,5 @@
 import { eq } from "drizzle-orm";
 import { createMiddleware } from "hono/factory";
-import { HTTPException } from "hono/http-exception";
 import { solverProfiles } from "../db/schema";
 import type { AuthType } from "../lib/auth";
 import type { AppEnv } from "../lib/di";
@@ -9,51 +8,53 @@ import type { AppRole, statement } from "../lib/permissions";
 type NonNull<T> = { [P in keyof T]-?: NonNullable<T[P]> };
 
 type AuthenticatedEnv = {
-	Variables: NonNull<AuthType>;
+  Variables: NonNull<AuthType>;
 } & AppEnv;
 
-export const requireAuth = createMiddleware<AuthenticatedEnv>(async (c, next) => {
-	const sessionData = await c.var.di.get("auth").api.getSession({
-		headers: c.req.raw.headers,
-	});
+export const requireAuth = createMiddleware<AuthenticatedEnv>(
+  async (c, next) => {
+    const sessionData = await c.var.di.get("auth").api.getSession({
+      headers: c.req.raw.headers,
+    });
 
-	if (!sessionData) {
-		return c.json({ error: "Unauthorized" }, 401);
-	}
+    if (!sessionData) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
 
-	c.set("user", sessionData.user);
-	c.set("session", sessionData.session);
-	await next();
-});
+    c.set("user", sessionData.user);
+    c.set("session", sessionData.session);
+    await next();
+  },
+);
 
 export function requireRole(allowedRoles: AppRole[]) {
-	return createMiddleware<AuthenticatedEnv>(async (c, next) => {
-		const authInstance = c.var.di.get("auth");
-		const sessionData = await authInstance.api.getSession({
-			headers: c.req.raw.headers,
-		});
+  return createMiddleware<AuthenticatedEnv>(async (c, next) => {
+    const authInstance = c.var.di.get("auth");
+    const sessionData = await authInstance.api.getSession({
+      headers: c.req.raw.headers,
+    });
 
-		if (!sessionData) {
-			return c.json({ error: "Unauthorized" }, 401);
-		}
+    if (!sessionData) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
 
-		// No fallback to a default role: a null/unrecognised role is a hard
-		// deny, not a silent grant of student-level access (see Part 1 #4 —
-		// this previously defaulted a null role to "student").
-		const userRole = sessionData.user.role as AppRole | null | undefined;
-		if (!userRole || !allowedRoles.includes(userRole)) {
-			return c.json({ error: "Forbidden: Insufficient permissions" }, 403);
-		}
+    // No fallback to a default role: a null/unrecognised role is a hard
+    // deny, not a silent grant of student-level access (see Part 1 #4 —
+    // this previously defaulted a null role to "student").
+    const userRole = sessionData.user.role as AppRole | null | undefined;
+    if (!userRole || !allowedRoles.includes(userRole)) {
+      return c.json({ error: "Forbidden: Insufficient permissions" }, 403);
+    }
 
-		c.set("user", sessionData.user);
-		c.set("session", sessionData.session);
-		await next();
-	});
+    c.set("user", sessionData.user);
+    c.set("session", sessionData.session);
+    await next();
+  });
 }
 
 type Statement = typeof statement;
 export type PermissionCheck = {
-	[K in keyof Statement]?: Statement[K][number][];
+  [K in keyof Statement]?: Statement[K][number][];
 };
 
 /**
@@ -63,36 +64,38 @@ export type PermissionCheck = {
  * destructures `.success` from the result (the previous version checked
  * truthiness of the whole `{ error, success }` object, which is always
  * truthy — the check could never fail).
+ * If you need both permission, and auth for user info access,
+ * chain {requireAuth} and {requirePermission} in the same endpoint.
  */
 export const requirePermission = (permissions: PermissionCheck) =>
-	createMiddleware<AuthenticatedEnv>(async (c, next) => {
-		const authInstance = c.var.di.get("auth");
-		const sessionData = await authInstance.api.getSession({
-			headers: c.req.raw.headers,
-		});
+  createMiddleware<AuthenticatedEnv>(async (c, next) => {
+    const authInstance = c.var.di.get("auth");
+    const sessionData = await authInstance.api.getSession({
+      headers: c.req.raw.headers,
+    });
 
-		if (!sessionData) {
-			return c.json({ error: "Unauthorized" }, 401);
-		}
+    if (!sessionData) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
 
-		const result = await authInstance.api.userHasPermission({
-			body: {
-				userId: sessionData.user.id,
-				permissions,
-			},
-			request: c.req.raw,
-		});
+    const result = await authInstance.api.userHasPermission({
+      body: {
+        permissions,
+      },
+      headers: c.req.raw.headers,
+    });
 
-		if (!result.success) {
-			throw new HTTPException(403, {
-				message: "Forbidden: You do not possess the required permissions.",
-			});
-		}
+    if (!result.success) {
+      return c.json(
+        { error: "Forbidden: You do not possess the required permissions." },
+        403,
+      );
+    }
 
-		c.set("user", sessionData.user);
-		c.set("session", sessionData.session);
-		await next();
-	});
+    c.set("user", sessionData.user);
+    c.set("session", sessionData.session);
+    await next();
+  });
 
 /**
  * Gates the prototype's "admin solver" powers on the main site (override a
@@ -103,31 +106,33 @@ export const requirePermission = (permissions: PermissionCheck) =>
  * solver_profiles.isAdminSolver instead, and this middleware checks it
  * directly against the database.
  */
-export const requireAdminSolver = createMiddleware<AuthenticatedEnv>(async (c, next) => {
-	const authInstance = c.var.di.get("auth");
-	const sessionData = await authInstance.api.getSession({
-		headers: c.req.raw.headers,
-	});
+export const requireAdminSolver = createMiddleware<AuthenticatedEnv>(
+  async (c, next) => {
+    const authInstance = c.var.di.get("auth");
+    const sessionData = await authInstance.api.getSession({
+      headers: c.req.raw.headers,
+    });
 
-	if (!sessionData) {
-		return c.json({ error: "Unauthorized" }, 401);
-	}
+    if (!sessionData) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
 
-	if (sessionData.user.role !== "solver") {
-		return c.json({ error: "Forbidden: Admin-solver access required" }, 403);
-	}
+    if (sessionData.user.role !== "solver") {
+      return c.json({ error: "Forbidden: Admin-solver access required" }, 403);
+    }
 
-	const db = c.var.di.get("db");
-	const profile = await db.query.solverProfiles.findFirst({
-		where: eq(solverProfiles.userId, sessionData.user.id),
-		columns: { isAdminSolver: true },
-	});
+    const db = c.var.di.get("db");
+    const profile = await db.query.solverProfiles.findFirst({
+      where: eq(solverProfiles.userId, sessionData.user.id),
+      columns: { isAdminSolver: true },
+    });
 
-	if (!profile?.isAdminSolver) {
-		return c.json({ error: "Forbidden: Admin-solver access required" }, 403);
-	}
+    if (!profile?.isAdminSolver) {
+      return c.json({ error: "Forbidden: Admin-solver access required" }, 403);
+    }
 
-	c.set("user", sessionData.user);
-	c.set("session", sessionData.session);
-	await next();
-});
+    c.set("user", sessionData.user);
+    c.set("session", sessionData.session);
+    await next();
+  },
+);

@@ -2,7 +2,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { admin } from "better-auth/plugins";
 import { username } from "better-auth/plugins/username";
-import { type DB } from "../db";
+import { createDatabase, type DB } from "../db";
 import * as schema from "../db/schema";
 import { env } from "../env";
 import { achieveSsoPlugin } from "./achieve-sso-plugin";
@@ -20,6 +20,7 @@ export function createAuth(database: DB) {
         verification: schema.verification,
         batches: schema.batches,
         studentProfiles: schema.studentProfiles,
+        solverProfiles: schema.solverProfiles,
         achieveSsoTokens: schema.achieveSsoTokens,
       },
     }),
@@ -33,6 +34,7 @@ export function createAuth(database: DB) {
       // .createUser directly — unaffected by this HTTP-level flag).
       disableSignUp: true,
       minPasswordLength: 8,
+      requireEmailVerification: false,
       sendResetPassword: async ({ user, url }) => {
         await sendMail({
           to: user.email,
@@ -78,3 +80,4 @@ export type AuthType = {
   user: User | null;
   session: Session | null;
 };
+export const auth = createAuth(createDatabase());
