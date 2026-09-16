@@ -1,0 +1,86 @@
+import { and, eq, isNull, lt, sql } from "drizzle-orm";
+import type { DB } from "../db";
+import { lockEvents, notifications, questions } from "../db/schema";
+import type { FeedHub } from "../ws/hub";
+
+/**
+ * Returns expired locks to the open feed.
+ *
+ * Without this, an abandoned lock is invisible: the question stays
+ * `assigned` (so it never appears in the default `waiting` feed) while the
+ * lock predicate treats it as reclaimable — meaning nobody can find the
+ * question they are allowed to take.
+ */
+export async function sweepExpiredLocks(db: DB, feed?: FeedHub) {
+  const expired = await db
+    .update(questions)
+    .set({
+      status: "waiting",
+      solverId: null,
+      lockedAt: null,
+      lockExpiresAt: null,
+      matchedAfterSec: null,
+    })
+    .where(
+      and(
+        eq(questions.status, "assigned"),
+        isNull(questions.deletedAt),
+        lt(questions.lockExpiresAt, sql`now()`),
+      ),
+    )
+    .returning({
+      id: questions.id,
+      askerId: questions.askerId,
+      solverId: questions.solverId,
+    });
+
+  for (const row of expired) {
+    // `returning()` gives the post-update row, so solverId is already null —
+    // the previous holder is recovered from the most recent lock event.
+    const [lastLock] = await db
+      .select({ solverId: lockEvents.solverId })
+      .from(lockEvents)
+      .where(and(eq(lockEvents.questionId, row.id), eq(lockEvents.action, "lock")))
+      .orderBy(sql`${lockEvents.at} desc`)
+      .limit(1);
+
+    if (lastLock) {
+      await db.insert(lockEvents).values({
+        questionId: row.id,
+        solverId: lastLock.solverId,
+        action: "expire",
+      });
+    }
+
+    await db.insert(notifications).values({
+      userId: row.askerId,
+      type: "released",
+      questionId: row.id,
+    });
+
+    feed?.broadcast("QUESTION_EXPIRED", { questionId: row.id });
+  }
+
+  return expired.length;
+}
+
+/**
+ * Starts the periodic sweep. Returns a stop function so tests (and a
+ * graceful shutdown) can clear the timer.
+ */
+export function startLockSweeper(
+  db: DB,
+  feed?: FeedHub,
+  intervalMs = 30_000,
+): () => void {
+  const timer = setInterval(() => {
+    sweepExpiredLocks(db, feed).catch((err) => {
+      console.error("[lock-sweeper] sweep failed", err);
+    });
+  }, intervalMs);
+
+  // Don't hold the process open purely for the sweeper.
+  timer.unref?.();
+
+  return () => clearInterval(timer);
+}

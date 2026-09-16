@@ -70,6 +70,11 @@ export function createAuth(database: DB) {
       // created or signed in. See achieve-sso-plugin.ts.
       achieveSsoPlugin(),
     ],
+    session: {
+      cookieCache: {
+        enabled: true,
+      },
+    },
   });
 }
 
