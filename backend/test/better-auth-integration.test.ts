@@ -43,7 +43,7 @@ describe("Better-Auth Test Utils - Integration Tests", () => {
 		);
 
 		expect(presignRes.status).toBe(200);
-		const data = await presignRes.json();
+		const data = (await presignRes.json()) as { uploadUrl: string };
 		expect(data.uploadUrl).toBeDefined();
 
 		await test.deleteUser(student.id);

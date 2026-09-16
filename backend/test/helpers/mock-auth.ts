@@ -15,6 +15,7 @@ export function createMockAuth(
 					email: user.email ?? "mock@example.com",
 					emailVerified: true,
 					role: user.role ?? "student",
+					banned: user.banned ?? false,
 					createdAt: new Date(),
 					updatedAt: new Date(),
 					...user,

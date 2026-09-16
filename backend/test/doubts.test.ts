@@ -23,13 +23,18 @@ describe("Doubts Platform Lifecycle with InferDI (Mock)", () => {
 		const token = await attestationService.generateToken();
 		expect(await attestationService.verifyToken(token)).toBe(true);
 
+		mockDb.insert = (() => ({
+			values: (vals: Record<string, unknown>) => ({
+				returning: async () => [{ id: 1, status: "UNLOCKED", ...vals }],
+			}),
+		})) as never;
+
 		const doubt = await doubtService.createDoubt("student-123", {
 			title: "Calculus integration",
 			description: "How to integrate x*sin(x)?",
 			subject: "Math",
 			imageUrl: presigned.publicUrl,
 		});
-		console.log(doubt);
 		expect(doubt.status).toBe("UNLOCKED");
 
 		mockDb.update = (() => ({

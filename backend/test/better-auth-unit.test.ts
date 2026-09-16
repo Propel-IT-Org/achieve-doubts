@@ -15,11 +15,14 @@ describe("Better-Auth Test Utils - Unit Tests", () => {
 	it("createUser factory allows overriding specific user fields", async () => {
 		const { test } = await createBetterAuthTest();
 
+		// testUtils' createUser() is typed against better-auth's base User model, which
+		// has no `role` field — plugin-added fields like `role` still pass through at
+		// runtime via its `Record<string, unknown>` overrides, just untyped on the result.
 		const customUser = test.createUser({
 			name: "Sarah Connor",
 			email: "sarah@resistance.org",
 			role: "admin",
-		});
+		}) as ReturnType<typeof test.createUser> & { role: string };
 
 		expect(customUser.name).toBe("Sarah Connor");
 		expect(customUser.email).toBe("sarah@resistance.org");

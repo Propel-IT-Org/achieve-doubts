@@ -18,7 +18,7 @@ describe("API Route: /api/auth", () => {
 		};
 
 		const client = createTestClient({ auth: mockAuth });
-		const res = await client.api.auth.$get();
+		const res = await client.api.auth["*"].$get();
 
 		expect(res.status).toBe(200);
 		expect(handled).toBe(true);

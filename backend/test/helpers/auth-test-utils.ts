@@ -1,16 +1,23 @@
 ﻿import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { testUtils } from "better-auth/plugins";
+import { admin, testUtils } from "better-auth/plugins";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "../../src/db/schema";
 import { env } from "../../src/env";
+import { ac, roles } from "../../src/lib/permissions";
 
 export function createMockDrizzleAuthDb() {
 	const mockDb = drizzle.mock({ schema });
 	const users = new Map<string, Record<string, unknown>>();
 	const sessions = new Map<string, Record<string, unknown>>();
 
-	mockDb.session.client.query = async (
+	// `.session` is drizzle's internal DB session object — not part of the public
+	// NodePgDatabase type, but the only way to stub the underlying node-postgres
+	// client's `.query` so betterAuth's real SQL hits our in-memory maps instead.
+	const internalSession = mockDb as unknown as {
+		session: { client: { query: (...args: never[]) => Promise<unknown> } };
+	};
+	internalSession.session.client.query = async (
 		queryObj: string | { text: string; values?: unknown[] },
 		params: unknown[] = [],
 	) => {
@@ -130,7 +137,12 @@ export async function createBetterAuthTest() {
 		}),
 		secret: env.BETTER_AUTH_SECRET || "mock-secret-at-least-32-chars-long",
 		baseURL: env.BETTER_AUTH_URL || "http://localhost:3000",
-		plugins: [testUtils()],
+		// Mirrors the real app's auth config (src/lib/auth.ts) so `role` and other
+		// admin-plugin fields are part of the inferred User type in these tests too.
+		plugins: [
+			testUtils(),
+			admin({ ac, roles, defaultRole: "student", adminRoles: ["admin"] }),
+		],
 	});
 
 	const ctx = await auth.$context;
