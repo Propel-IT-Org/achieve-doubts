@@ -1,5 +1,6 @@
 import {
   boolean,
+  index,
   integer,
   jsonb,
   pgTable,
@@ -13,17 +14,28 @@ import { questions } from "./questions";
 
 // Every lock/unlock/override/expire transition — source of truth for the
 // solver dashboard's "questions locked" / "unlock rate" and an audit trail.
-export const lockEvents = pgTable("lock_events", {
-  id: serial("id").primaryKey(),
-  questionId: integer("question_id")
-    .notNull()
-    .references(() => questions.id, { onDelete: "cascade" }),
-  solverId: text("solver_id")
-    .notNull()
-    .references(() => user.id, { onDelete: "cascade" }),
-  action: lockActionEnum("action").notNull(),
-  at: timestamp("at").defaultNow().notNull(),
-});
+export const lockEvents = pgTable(
+  "lock_events",
+  {
+    id: serial("id").primaryKey(),
+    questionId: integer("question_id")
+      .notNull()
+      .references(() => questions.id, { onDelete: "cascade" }),
+    solverId: text("solver_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    action: lockActionEnum("action").notNull(),
+    at: timestamp("at").defaultNow().notNull(),
+  },
+  (table) => [
+    // The sweeper resolves a question's previous holder with
+    // `where question_id = ? order by at desc limit 1`. This table grows
+    // without bound, so that lookup must not scan it.
+    index("idx_lock_events_question_at").on(table.questionId, table.at.desc()),
+    // Dashboard "questions locked" / "unlock rate" count by solver+action.
+    index("idx_lock_events_solver_action").on(table.solverId, table.action),
+  ],
+);
 
 // Every admin delete, lock override, deactivation and report resolution.
 export const auditLog = pgTable("audit_log", {

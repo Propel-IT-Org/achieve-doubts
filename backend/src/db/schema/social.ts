@@ -1,4 +1,4 @@
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
   index,
   integer,
@@ -53,7 +53,19 @@ export const notifications = pgTable(
     readAt: timestamp("read_at"),
   },
   (table) => [
-    index("idx_notifications_user_read").on(table.userId, table.readAt),
+    // The inbox query is `where user_id = ? [+ filters] order by created_at
+    // desc, id desc`. The previous (user_id, read_at) index couldn't serve
+    // that ordering, so every page sorted the user's whole inbox.
+    index("idx_notifications_user_created").on(
+      table.userId,
+      table.createdAt.desc(),
+      table.id.desc(),
+    ),
+    // The unread badge runs on every page load and only ever counts unread
+    // rows, so a partial index stays tiny and fully answers it.
+    index("idx_notifications_user_unread")
+      .on(table.userId)
+      .where(sql`${table.readAt} is null`),
   ],
 );
 

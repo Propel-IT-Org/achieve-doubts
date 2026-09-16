@@ -11,7 +11,35 @@ import type { FeedHub } from "../ws/hub";
  * lock predicate treats it as reclaimable — meaning nobody can find the
  * question they are allowed to take.
  */
+/**
+ * Arbitrary constant identifying the sweep lock. Advisory locks share one
+ * global key space, so this must not collide with another advisory lock —
+ * questions.service.ts keys its per-solver lock on hashtext(solverId).
+ */
+const SWEEP_LOCK_KEY = 4_820_119;
+
 export async function sweepExpiredLocks(db: DB, feed?: FeedHub) {
+  // With several replicas every instance runs this timer. Concurrent sweeps
+  // are not incorrect — the UPDATE is atomic, so a given row is returned to
+  // exactly one instance and notifications can't be duplicated — but they are
+  // wasted work. A session-level try-lock means one instance sweeps and the
+  // rest return immediately instead of queueing.
+  const lockRows = (await db.execute(
+    sql`select pg_try_advisory_lock(${SWEEP_LOCK_KEY}) as ok`,
+  )) as unknown as Array<{ ok: boolean }>;
+
+  if (!lockRows[0]?.ok) return 0;
+
+  try {
+    return await runSweep(db, feed);
+  } finally {
+    // Session-scoped, so it must be released explicitly — unlike the
+    // transaction-scoped lock used for the follow-up check.
+    await db.execute(sql`select pg_advisory_unlock(${SWEEP_LOCK_KEY})`);
+  }
+}
+
+async function runSweep(db: DB, feed?: FeedHub) {
   const expired = await db
     .update(questions)
     .set({

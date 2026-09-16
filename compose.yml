@@ -1,0 +1,186 @@
+# Production stack for a single VPS (netcup VPS 1000 G12: 4 vCore / 8 GB).
+#
+# Everything terminates at Traefik; only 80/443 are published. Postgres has no
+# published ports at all — it is reachable only on the internal network.
+#
+# Required .env at this directory (compose loads it automatically):
+#   DOMAIN=doubts.example.com
+#   ACME_EMAIL=ops@example.com
+#   POSTGRES_PASSWORD=<strong>
+#   BETTER_AUTH_SECRET=<32+ chars>
+#   ACHIEVE_SHARED_SECRET=<32+ chars>
+#   ATTESTATION_SECRET=<16+ chars>
+#   ACHIEVE_ALLOWED_IPS=<comma-separated Achieve backend IPs>
+#   S3_ENDPOINT= / S3_ACCESS_KEY_ID= / S3_SECRET_ACCESS_KEY= /
+#   S3_BUCKET_NAME= / S3_PUBLIC_URL=
+#
+# Migrations are run from the api image, not at boot:
+#   docker compose run --rm api bun run --cwd backend db:migrate
+
+name: achieve-doubts
+
+services:
+  traefik:
+    image: traefik:v3.3
+    restart: unless-stopped
+    command:
+      - --providers.docker=true
+      # Nothing is routable unless it opts in with traefik.enable=true.
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --certificatesresolvers.le.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.le.acme.tlschallenge=true
+      - --accesslog=true
+      - --log.level=INFO
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Read-only: Traefik only needs to *watch* container labels. A writable
+      # docker socket in a public-facing container is a root-equivalent hole.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-acme:/letsencrypt
+    networks: [edge]
+    deploy:
+      resources:
+        limits: { cpus: "0.50", memory: 256M }
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    # Docker's default /dev/shm is 64MB, which makes parallel query plans fail
+    # with "could not resize shared memory segment". The admin analytics
+    # aggregations generate exactly those plans.
+    shm_size: 1gb
+    environment:
+      POSTGRES_DB: achieve_doubts
+      POSTGRES_USER: achieve
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    command:
+      - postgres
+      - -c
+      - shared_buffers=2GB
+      - -c
+      - effective_cache_size=5GB
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=512MB
+      # The app pool opens 10; the rest is headroom for migrations and psql.
+      - -c
+      - max_connections=50
+      # NVMe: random reads cost essentially the same as sequential ones.
+      - -c
+      - random_page_cost=1.1
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U achieve -d achieve_doubts"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # No `ports:` — deliberately unreachable from the internet.
+    networks: [internal]
+    deploy:
+      resources:
+        limits: { cpus: "2.0", memory: 3584M }
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Everything stored here is ephemeral: rate-limit counters and in-flight
+    # feed events. Losing it on restart costs one rate-limit window and a few
+    # missed live updates, so persistence is off entirely. The memory cap plus
+    # LRU eviction means a traffic spike evicts old counters instead of
+    # pushing the box toward OOM.
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    # No published ports — reachable only by the api containers.
+    networks: [internal]
+    deploy:
+      resources:
+        limits: { cpus: "0.50", memory: 320M }
+
+  api:
+    build:
+      # Repo root: Bun workspace lockfile lives here, not in backend/.
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_URL: postgres://achieve:${POSTGRES_PASSWORD}@postgres:5432/achieve_doubts
+      # Required for multi-replica: shared rate-limit counters and cross-
+      # instance WebSocket fan-out. Omit it and each replica silently gets its
+      # own counters and its own isolated feed.
+      REDIS_URL: redis://redis:6379
+      # better-auth issues secure cookies off this origin — it must be the
+      # public https URL, not the container address.
+      BETTER_AUTH_URL: https://api.${DOMAIN}
+      CORS_ORIGIN: https://${DOMAIN}
+      ADMIN_ORIGIN: https://admin.${DOMAIN}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      ACHIEVE_SHARED_SECRET: ${ACHIEVE_SHARED_SECRET}
+      ATTESTATION_SECRET: ${ATTESTATION_SECRET}
+      ACHIEVE_ALLOWED_IPS: ${ACHIEVE_ALLOWED_IPS}
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME}
+      S3_PUBLIC_URL: ${S3_PUBLIC_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=achieve-doubts_edge
+      - traefik.http.routers.api.rule=Host(`api.${DOMAIN}`)
+      - traefik.http.routers.api.entrypoints=websecure
+      - traefik.http.routers.api.tls.certresolver=le
+      - traefik.http.services.api.loadbalancer.server.port=3000
+      - traefik.http.routers.api.middlewares=api-compress@docker
+      - traefik.http.middlewares.api-compress.compress=true
+    networks: [edge, internal]
+    deploy:
+      resources:
+        # Now horizontally scalable — the limiter and the WS hub both go
+        # through Redis. Traefik load-balances every replica automatically,
+        # since they all carry the same router labels:
+        #
+        #   docker compose up -d --scale api=3
+        #
+        # Sized so three replicas still fit alongside Postgres (3.5G), Redis
+        # and Traefik on an 8 GB box.
+        limits: { cpus: "2.0", memory: 1024M }
+
+networks:
+  # Public-facing: Traefik and the two things it routes to.
+  edge:
+  # Postgres and the api only. Nothing here is published to the host.
+  internal:
+    internal: true
+
+volumes:
+  pgdata:
+  traefik-acme:

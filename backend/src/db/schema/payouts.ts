@@ -1,5 +1,6 @@
 import { relations } from "drizzle-orm";
 import {
+  index,
   integer,
   numeric,
   pgTable,
@@ -23,22 +24,31 @@ export const payoutPeriods = pgTable("payout_periods", {
   note: text("note"),
 });
 
-export const payoutLines = pgTable("payout_lines", {
-  id: serial("id").primaryKey(),
-  periodId: integer("period_id")
-    .notNull()
-    .references(() => payoutPeriods.id, { onDelete: "cascade" }),
-  solverId: text("solver_id")
-    .notNull()
-    .references(() => user.id, { onDelete: "cascade" }),
-  answered: integer("answered").notNull().default(0),
-  satisfied: integer("satisfied").notNull().default(0),
-  unsatisfied: integer("unsatisfied").notNull().default(0),
-  unrated: integer("unrated").notNull().default(0),
-  avgRespMin: numeric("avg_resp_min"),
-  rate: numeric("rate"),
-  amount: numeric("amount"),
-});
+export const payoutLines = pgTable(
+  "payout_lines",
+  {
+    id: serial("id").primaryKey(),
+    periodId: integer("period_id")
+      .notNull()
+      .references(() => payoutPeriods.id, { onDelete: "cascade" }),
+    solverId: text("solver_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    answered: integer("answered").notNull().default(0),
+    satisfied: integer("satisfied").notNull().default(0),
+    unsatisfied: integer("unsatisfied").notNull().default(0),
+    unrated: integer("unrated").notNull().default(0),
+    avgRespMin: numeric("avg_resp_min"),
+    rate: numeric("rate"),
+    amount: numeric("amount"),
+  },
+  (table) => [
+    // Postgres does not index foreign keys automatically, so without this a
+    // cascading delete of a period sequential-scans every line. It also
+    // serves the `lines: many(payoutLines)` relation.
+    index("idx_payout_lines_period").on(table.periodId),
+  ],
+);
 
 export const payoutPeriodsRelations = relations(payoutPeriods, ({ many }) => ({
   lines: many(payoutLines),

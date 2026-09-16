@@ -1,4 +1,4 @@
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
   index,
   integer,
@@ -67,29 +67,51 @@ export const questions = pgTable(
     ),
     index("idx_questions_asker").on(table.askerId),
     index("idx_questions_solver_status").on(table.solverId, table.status),
+    // Search is `ilike '%term%'`, which no btree can serve — without this it
+    // is a sequential scan of the whole table on every query. Needs the
+    // pg_trgm extension, created in the migration because an extension can't
+    // be expressed in the drizzle schema.
+    index("idx_questions_text_trgm").using(
+      "gin",
+      table.text.op("gin_trgm_ops"),
+    ),
+    // Payout ranges filter on answered_at and the analytics trend groups by
+    // date_trunc('day', answered_at). Partial because most rows are NULL
+    // (never answered), which keeps the index small.
+    index("idx_questions_answered_at")
+      .on(table.answeredAt)
+      .where(sql`${table.answeredAt} is not null`),
   ],
 );
 
-export const solutions = pgTable("solutions", {
-  id: serial("id").primaryKey(),
-  // Unique — enforces exactly one solution per question at the DB level.
-  questionId: integer("question_id")
-    .notNull()
-    .unique()
-    .references(() => questions.id, { onDelete: "cascade" }),
-  solverId: text("solver_id")
-    .notNull()
-    .references(() => user.id, { onDelete: "cascade" }),
-  text: text("text"),
-  imageUrl: text("image_url"),
-  audioUrl: text("audio_url"),
-  audioSeconds: integer("audio_seconds"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  deletedAt: timestamp("deleted_at"),
-  deletedBy: text("deleted_by").references(() => user.id, {
-    onDelete: "set null",
-  }),
-});
+export const solutions = pgTable(
+  "solutions",
+  {
+    id: serial("id").primaryKey(),
+    // Unique — enforces exactly one solution per question at the DB level,
+    // and the unique index is what serves lookups by question_id.
+    questionId: integer("question_id")
+      .notNull()
+      .unique()
+      .references(() => questions.id, { onDelete: "cascade" }),
+    solverId: text("solver_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    text: text("text"),
+    imageUrl: text("image_url"),
+    audioUrl: text("audio_url"),
+    audioSeconds: integer("audio_seconds"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    deletedAt: timestamp("deleted_at"),
+    deletedBy: text("deleted_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+  },
+  (table) => [
+    // computeSolverStats and the analytics/payout joins all filter by solver.
+    index("idx_solutions_solver").on(table.solverId),
+  ],
+);
 
 // Private asker <-> assigned-solver follow-up thread. Readable by any
 // logged-in user once a solution exists; postable only by the two parties.

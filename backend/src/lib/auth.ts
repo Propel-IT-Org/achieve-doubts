@@ -42,6 +42,14 @@ export function createAuth(database: DB) {
           text: `Reset your password: ${url}\n\nIf you didn't request this, ignore this email.`,
         });
       },
+      password: {
+        hash(password) {
+          return Bun.password.hash(password);
+        },
+        verify(data) {
+          return Bun.password.verify(data.password, data.hash);
+        },
+      },
     },
     emailVerification: {
       sendVerificationEmail: async ({ user, url }) => {
