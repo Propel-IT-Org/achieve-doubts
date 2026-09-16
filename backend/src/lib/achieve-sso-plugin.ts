@@ -1,0 +1,304 @@
+import { createHash, timingSafeEqual } from "node:crypto";
+import type { BetterAuthPlugin } from "better-auth";
+import { APIError, createAuthEndpoint } from "better-auth/api";
+import { setSessionCookie } from "better-auth/cookies";
+import { and, eq, gt, isNull, sql } from "drizzle-orm";
+import { z } from "zod";
+import type { DB } from "../db";
+import { achieveSsoTokens, batches, studentProfiles, user } from "../db/schema";
+import { env } from "../env";
+
+const TOKEN_TTL_SECONDS = 90;
+
+export const initiatePayloadSchema = z.object({
+  name: z.string().min(1),
+  email: z.email(),
+  phone: z.string().optional(),
+  institution: z.string().optional(),
+  batch: z.string().min(1),
+});
+
+/**
+ * The documented payload uses capitalised keys (Name/Email/Phone/
+ * Institution/Batch); accept lowercase too so a client-side casing choice
+ * either way doesn't produce a hard-to-debug 400.
+ */
+export function normalizePayload(raw: Record<string, unknown>) {
+  const pick = (a: string, b: string) => raw[a] ?? raw[b];
+  return {
+    name: pick("Name", "name"),
+    email: pick("Email", "email"),
+    phone: pick("Phone", "phone"),
+    institution: pick("Institution", "institution"),
+    batch: pick("Batch", "batch"),
+  };
+}
+
+/** sha256-then-timingSafeEqual avoids both the length mismatch that makes
+ * node's timingSafeEqual throw on unequal-length input, and a naive `!==`
+ * comparison's early-exit timing leak. */
+export function constantTimeEqual(a: string, b: string): boolean {
+  const digestA = createHash("sha256").update(a).digest();
+  const digestB = createHash("sha256").update(b).digest();
+  return timingSafeEqual(digestA, digestB);
+}
+
+export function randomToken(): string {
+  const bytes = new Uint8Array(32); // 256 bits — doc requires >=128
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+export function hashToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function errorBody(errorCode: string, message: string) {
+  return { status: "error" as const, error_code: errorCode, message };
+}
+
+/**
+ * Custom BetterAuthPlugin implementing the Achieve integration handshake
+ * (docs/Achieve_DoubtSolving_Integration_Spec.pdf) — we are "the Provider".
+ * Payload, response and error codes match the document exactly; only the
+ * endpoint paths differ (they live under better-auth's own basePath, see
+ * below). No off-the-shelf plugin fits: this is a bespoke server-to-server
+ * token exchange, not OAuth2/OIDC.
+ *
+ * `database` is the same drizzle instance used everywhere else in the app,
+ * closure-captured so this plugin can query/write batches, studentProfiles
+ * and achieveSsoTokens directly — those tables aren't registered with
+ * better-auth's own adapter (only user/session/account/verification are),
+ * and single-use token consumption needs one atomic statement the adapter
+ * API can't express anyway.
+ */
+export function achieveSsoPlugin(database: DB) {
+  return {
+    id: "achieve-sso",
+    endpoints: {
+      // Mounted at /api/auth/achieve/sessions/initiate (better-auth's
+      // basePath is /api/auth). Called only by Achieve's backend.
+      achieveInitiateSession: createAuthEndpoint(
+        "/achieve/sessions/initiate",
+        {
+          method: "POST",
+          // Deliberately lenient here — real validation happens below with
+          // initiatePayloadSchema, so every failure path can return the
+          // exact documented { status, error_code, message } shape instead
+          // of better-call's own generic validation-error response.
+          body: z.record(z.string(), z.unknown()),
+        },
+        async (ctx) => {
+          const providedSecret =
+            ctx.request?.headers.get("x-achieve-auth") ?? "";
+          if (
+            !providedSecret ||
+            !constantTimeEqual(providedSecret, env.ACHIEVE_SHARED_SECRET)
+          ) {
+            throw new APIError(
+              401,
+              errorBody(
+                "INVALID_AUTH",
+                "Invalid or missing X-Achieve-Auth header.",
+              ),
+            );
+          }
+
+          const parsed = initiatePayloadSchema.safeParse(
+            normalizePayload(ctx.body),
+          );
+          if (!parsed.success) {
+            throw new APIError(
+              400,
+              errorBody(
+                "INVALID_PAYLOAD",
+                "One or more required fields are missing or malformed.",
+              ),
+            );
+          }
+          const {
+            name,
+            email,
+            phone,
+            institution,
+            batch: batchId,
+          } = parsed.data;
+          const normalizedEmail = email.toLowerCase();
+
+          // Everything from here on touches the database — one try/catch so
+          // any unexpected failure (not just the upsert path) still returns
+          // the documented 500 INTERNAL_ERROR shape instead of an unhandled
+          // framework-level error.
+          try {
+            const batch = await database.query.batches.findFirst({
+              where: eq(batches.id, batchId),
+            });
+            if (!batch || !batch.active) {
+              throw new APIError(
+                404,
+                errorBody(
+                  "UNKNOWN_BATCH",
+                  "The supplied batch does not exist.",
+                ),
+              );
+            }
+
+            // achieveKey = normalized email today — the specific unique key
+            // Achieve and we agree on is still a field gap to settle (see
+            // Part 4 of the plan); this is the one place that changes if it
+            // turns out to be something else (e.g. Phone).
+            const existingProfile =
+              await database.query.studentProfiles.findFirst({
+                where: eq(studentProfiles.achieveKey, normalizedEmail),
+              });
+
+            let userId: string;
+            let userStatus: "existing" | "new";
+
+            if (existingProfile) {
+              userId = existingProfile.userId;
+              userStatus = "existing";
+              // Upsert on every handshake, not just on first contact, so
+              // profile changes on Achieve's side propagate here.
+              await database
+                .update(user)
+                .set({ name })
+                .where(eq(user.id, userId));
+              await database
+                .update(studentProfiles)
+                .set({ phone, institution, batchId })
+                .where(eq(studentProfiles.userId, userId));
+            } else {
+              const conflictingUser =
+                await ctx.context.internalAdapter.findUserByEmail(
+                  normalizedEmail,
+                );
+              if (conflictingUser) {
+                // This email already belongs to a non-student account (e.g.
+                // a solver/staff login) — refuse rather than silently
+                // attaching a student profile to someone else's account.
+                console.error(
+                  `[achieve-sso] ${normalizedEmail} already belongs to a non-student account`,
+                );
+                throw new APIError(
+                  500,
+                  errorBody("INTERNAL_ERROR", "Unable to complete sign-in."),
+                );
+              }
+
+              const created = await ctx.context.internalAdapter.createUser(
+                {
+                  name,
+                  email: normalizedEmail,
+                  emailVerified: true,
+                  role: "student",
+                },
+                { method: "achieve-sso" },
+              );
+              userId = created.id;
+              userStatus = "new";
+              await database.insert(studentProfiles).values({
+                userId,
+                phone,
+                institution,
+                batchId,
+                achieveKey: normalizedEmail,
+              });
+            }
+
+            const token = randomToken();
+            await database.insert(achieveSsoTokens).values({
+              tokenHash: hashToken(token),
+              userId,
+              batchId,
+              expiresAt: new Date(Date.now() + TOKEN_TTL_SECONDS * 1000),
+              createdIp:
+                ctx.request?.headers
+                  .get("x-forwarded-for")
+                  ?.split(",")[0]
+                  ?.trim() ?? null,
+            });
+
+            const redirectUrl = new URL(
+              "/api/auth/achieve/sso",
+              env.BETTER_AUTH_URL,
+            );
+            redirectUrl.searchParams.set("token", token);
+
+            return ctx.json({
+              status: "success" as const,
+              user_status: userStatus,
+              redirect_url: redirectUrl.toString(),
+            });
+          } catch (err) {
+            // Our own documented error responses are already the right
+            // shape and status — only genuinely unexpected failures (a real
+            // DB error, etc.) get folded into the generic 500 below.
+            if (err instanceof APIError) throw err;
+            console.error("[achieve-sso] initiate failed", err);
+            throw new APIError(
+              500,
+              errorBody("INTERNAL_ERROR", "Unexpected server error."),
+            );
+          }
+        },
+      ),
+
+      // Mounted at /api/auth/achieve/sso. The browser lands here after
+      // Achieve redirects the student; consumes the token and signs them in.
+      achieveConsumeSession: createAuthEndpoint(
+        "/achieve/sso",
+        {
+          method: "GET",
+          query: z.object({ token: z.string().min(1).optional() }),
+        },
+        async (ctx) => {
+          const token = ctx.query.token;
+          if (!token) {
+            throw ctx.redirect(`${env.CORS_ORIGIN}/?ssoError=missing_token`);
+          }
+
+          // Single atomic statement: a token can be consumed by exactly one
+          // of two concurrent requests, closing the race a separate
+          // find-then-delete would leave open.
+          const [consumed] = await database
+            .update(achieveSsoTokens)
+            .set({ consumedAt: sql`now()` })
+            .where(
+              and(
+                eq(achieveSsoTokens.tokenHash, hashToken(token)),
+                isNull(achieveSsoTokens.consumedAt),
+                gt(achieveSsoTokens.expiresAt, sql`now()`),
+              ),
+            )
+            .returning();
+
+          if (!consumed) {
+            throw ctx.redirect(
+              `${env.CORS_ORIGIN}/?ssoError=expired_or_invalid`,
+            );
+          }
+
+          const foundUser = await ctx.context.internalAdapter.findUserById(
+            consumed.userId,
+          );
+          if (!foundUser) {
+            throw ctx.redirect(
+              `${env.CORS_ORIGIN}/?ssoError=expired_or_invalid`,
+            );
+          }
+
+          // dontRememberMe defaults to false/undefined here, i.e. a normal
+          // persistent session — not the `createSession(userId, ctx)`
+          // mistake that would have passed a truthy second argument.
+          const session = await ctx.context.internalAdapter.createSession(
+            foundUser.id,
+          );
+          await setSessionCookie(ctx, { session, user: foundUser });
+
+          throw ctx.redirect(`${env.CORS_ORIGIN}/`);
+        },
+      ),
+    },
+  } satisfies BetterAuthPlugin;
+}

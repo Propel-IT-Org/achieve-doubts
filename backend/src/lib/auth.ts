@@ -5,6 +5,7 @@ import { username } from "better-auth/plugins/username";
 import type { DB } from "../db";
 import * as schema from "../db/schema";
 import { env } from "../env";
+import { achieveSsoPlugin } from "./achieve-sso-plugin";
 import { sendMail } from "./mailer";
 import { ac, roles } from "./permissions";
 
@@ -60,6 +61,9 @@ export function createAuth(database: DB) {
 				defaultRole: "student",
 				adminRoles: ["staff"],
 			}),
+			// Achieve SSO handshake — the only way a student account is ever
+			// created or signed in. See achieve-sso-plugin.ts.
+			achieveSsoPlugin(database),
 		],
 	});
 }
