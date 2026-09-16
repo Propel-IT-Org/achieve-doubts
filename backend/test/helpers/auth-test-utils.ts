@@ -141,7 +141,7 @@ export async function createBetterAuthTest() {
 		// admin-plugin fields are part of the inferred User type in these tests too.
 		plugins: [
 			testUtils(),
-			admin({ ac, roles, defaultRole: "student", adminRoles: ["admin"] }),
+			admin({ ac, roles, defaultRole: "student", adminRoles: ["staff"] }),
 		],
 	});
 

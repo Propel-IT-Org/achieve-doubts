@@ -21,12 +21,12 @@ describe("Better-Auth Test Utils - Unit Tests", () => {
 		const customUser = test.createUser({
 			name: "Sarah Connor",
 			email: "sarah@resistance.org",
-			role: "admin",
+			role: "staff",
 		}) as ReturnType<typeof test.createUser> & { role: string };
 
 		expect(customUser.name).toBe("Sarah Connor");
 		expect(customUser.email).toBe("sarah@resistance.org");
-		expect(customUser.role).toBe("admin");
+		expect(customUser.role).toBe("staff");
 	});
 
 	it("saveUser persists user in Drizzle mock and deleteUser removes them", async () => {
