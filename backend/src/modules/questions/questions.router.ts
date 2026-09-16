@@ -77,12 +77,18 @@ export const questionsRouter = new Hono<AppEnv>()
   )
   // Static segments must be registered before the generic "/:id" below, or
   // "open"/"feed" would match as an :id.
-  .get("/open/count", requirePermission({ question: ["claim"] }), async (c) => {
-    const value = await c.var.di.get("questions").countOpenQuestions();
-    return c.json({ count: value });
-  })
+  .get(
+    "/open/count",
+    requireAuth,
+    requirePermission({ question: ["claim"] }),
+    async (c) => {
+      const value = await c.var.di.get("questions").countOpenQuestions();
+      return c.json({ count: value });
+    },
+  )
   .get(
     "/feed/ws",
+    requireAuth,
     requirePermission({ question: ["claim"] }),
     upgradeWebSocket((c: Context<AppEnv, "/feed/ws", BlankInput>) => {
       const feedHub = c.var.di.get("feed");

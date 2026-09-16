@@ -1,5 +1,6 @@
 import { createMiddleware } from "hono/factory";
 import type { AuthType } from "../lib/auth";
+import { fail } from "../lib/errors";
 import type { AppEnv } from "../lib/di";
 import type { AppRole, statement } from "../lib/permissions";
 
@@ -16,7 +17,7 @@ export const requireAuth = createMiddleware<AuthenticatedEnv>(
     });
 
     if (!sessionData) {
-      return c.json({ error: "Unauthorized" }, 401);
+      return fail(c, 401, "UNAUTHORIZED", "Unauthorized");
     }
 
     c.set("user", sessionData.user);
@@ -50,14 +51,14 @@ export function requireRole(allowedRoles: AppRole[]) {
     });
 
     if (!sessionData) {
-      return c.json({ error: "Unauthorized" }, 401);
+      return fail(c, 401, "UNAUTHORIZED", "Unauthorized");
     }
 
     // No fallback to a default role: a null/unrecognised role is a hard
     // deny, not a silent grant of student-level access.
     const userRole = sessionData.user.role as AppRole | null | undefined;
     if (!userRole || !allowedRoles.includes(userRole)) {
-      return c.json({ error: "Forbidden: Insufficient permissions" }, 403);
+      return fail(c, 403, "FORBIDDEN", "Forbidden: Insufficient permissions");
     }
 
     c.set("user", sessionData.user);
@@ -87,17 +88,28 @@ export const requirePermission = (permissions: PermissionCheck) =>
   createMiddleware<AuthenticatedEnv>(async (c, next) => {
     const authInstance = c.var.di.get("auth");
 
-    const result = await authInstance.api.userHasPermission({
-      body: {
-        permissions,
-      },
-      headers: c.req.raw.headers,
-    });
+    let result: { success: boolean };
+    try {
+      result = await authInstance.api.userHasPermission({
+        body: {
+          permissions,
+        },
+        headers: c.req.raw.headers,
+      });
+    } catch {
+      // better-auth *throws* when there is no session at all, rather than
+      // returning `{ success: false }`. That's an unauthenticated caller, not
+      // a server fault — without this, a guest hitting a permission-gated
+      // route gets a 500 instead of a 401.
+      return fail(c, 401, "UNAUTHORIZED", "Unauthorized");
+    }
 
     if (!result.success) {
-      return c.json(
-        { error: "Forbidden: You do not possess the required permissions." },
+      return fail(
+        c,
         403,
+        "FORBIDDEN",
+        "Forbidden: You do not possess the required permissions.",
       );
     }
 
