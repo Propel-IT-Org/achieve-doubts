@@ -1,5 +1,12 @@
 import { relations } from "drizzle-orm";
-import { pgTable, text, timestamp, boolean, index } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  timestamp,
+  boolean,
+  integer,
+  index,
+} from "drizzle-orm/pg-core";
 
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
@@ -12,14 +19,12 @@ export const user = pgTable("user", {
     .defaultNow()
     .$onUpdate(() => /* @__PURE__ */ new Date())
     .notNull(),
+  username: text("username").unique(),
+  displayUsername: text("display_username"),
   role: text("role"),
   banned: boolean("banned").default(false),
   banReason: text("ban_reason"),
   banExpires: timestamp("ban_expires"),
-  // Added by better-auth's `username` plugin — solver and staff sign in with
-  // these; students never set them (SSO-only, see achieve-sso-plugin.ts).
-  username: text("username").unique(),
-  displayUsername: text("display_username"),
 });
 
 export const session = pgTable(
@@ -82,9 +87,51 @@ export const verification = pgTable(
   (table) => [index("verification_identifier_idx").on(table.identifier)],
 );
 
+export const batches = pgTable("batches", {
+  id: text("id").primaryKey(),
+  label: text("label").notNull(),
+  active: boolean("active").notNull(),
+  createdAt: timestamp("created_at").notNull(),
+});
+
+export const studentProfiles = pgTable("student_profiles", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .unique()
+    .references(() => user.id, { onDelete: "cascade" }),
+  hscYear: integer("hsc_year"),
+  college: text("college"),
+  district: text("district"),
+  phone: text("phone"),
+  institution: text("institution"),
+  batchId: text("batch_id").references(() => batches.id, {
+    onDelete: "set null",
+  }),
+  achieveKey: text("achieve_key").notNull().unique(),
+  createdAt: timestamp("created_at").notNull(),
+  updatedAt: timestamp("updated_at").notNull(),
+});
+
+export const achieveSsoTokens = pgTable("achieve_sso_tokens", {
+  id: text("id").primaryKey(),
+  tokenHash: text("token_hash").notNull().unique(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  batchId: text("batch_id")
+    .notNull()
+    .references(() => batches.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdIp: text("created_ip"),
+  createdAt: timestamp("created_at").notNull(),
+});
+
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
   accounts: many(account),
+  studentProfiles: many(studentProfiles),
+  achieveSsoTokenss: many(achieveSsoTokens),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({
@@ -100,3 +147,36 @@ export const accountRelations = relations(account, ({ one }) => ({
     references: [user.id],
   }),
 }));
+
+export const batchesRelations = relations(batches, ({ many }) => ({
+  studentProfiless: many(studentProfiles),
+  achieveSsoTokenss: many(achieveSsoTokens),
+}));
+
+export const studentProfilesRelations = relations(
+  studentProfiles,
+  ({ one }) => ({
+    user: one(user, {
+      fields: [studentProfiles.userId],
+      references: [user.id],
+    }),
+    batches: one(batches, {
+      fields: [studentProfiles.batchId],
+      references: [batches.id],
+    }),
+  }),
+);
+
+export const achieveSsoTokensRelations = relations(
+  achieveSsoTokens,
+  ({ one }) => ({
+    user: one(user, {
+      fields: [achieveSsoTokens.userId],
+      references: [user.id],
+    }),
+    batches: one(batches, {
+      fields: [achieveSsoTokens.batchId],
+      references: [batches.id],
+    }),
+  }),
+);
