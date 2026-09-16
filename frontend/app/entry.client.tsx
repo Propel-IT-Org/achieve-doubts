@@ -1,16 +1,23 @@
-import { QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode, startTransition } from "react";
 import { hydrateRoot } from "react-dom/client";
 import { HydratedRouter } from "react-router/dom";
-import { getContext, queryClient } from "./lib/tanstack-query";
+import { SWRConfig } from "swr";
 
 startTransition(() => {
-	hydrateRoot(
-		document,
-		<StrictMode>
-			<QueryClientProvider client={queryClient}>
-				<HydratedRouter getContext={getContext} />
-			</QueryClientProvider>
-		</StrictMode>,
-	);
+  hydrateRoot(
+    document,
+    <StrictMode>
+      <SWRConfig
+        value={{
+          suspense: true,
+          revalidateOnReconnect: false,
+          revalidateOnMount: false,
+          revalidateOnFocus: false,
+          revalidateIfStale: false,
+        }}
+      >
+        <HydratedRouter />
+      </SWRConfig>
+    </StrictMode>,
+  );
 });

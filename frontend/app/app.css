@@ -1,15 +1,10 @@
+/* Must come first: CSS requires every @import to precede all rules, and the
+   bundler inlines `tailwindcss` below, so a font import living inside
+   acs.css would land after Tailwind's rules and get dropped. */
+@import url('https://fonts.googleapis.com/css2?family=Gloock&family=Hanken+Grotesk:wght@400;500;600;700&family=Noto+Sans+Bengali:wght@400;500;600;700&family=Noto+Serif+Bengali:wght@500;600&display=swap');
+
 @import "tailwindcss";
 
-@theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif,
-    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
-}
-
-html,
-body {
-  @apply bg-white dark:bg-gray-950;
-
-  @media (prefers-color-scheme: dark) {
-    color-scheme: dark;
-  }
-}
+/* The prototype's design system. Everything it defines is scoped under
+   `.acs`, so it coexists with Tailwind rather than competing with it. */
+@import "./styles/acs.css";

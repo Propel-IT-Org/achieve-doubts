@@ -8,6 +8,10 @@
     "./permissions": {
       "default": "./src/lib/permissions.ts",
       "types": "./src/lib/permissions.ts"
+    },
+    "./schemas": {
+      "default": "./src/schemas.ts",
+      "types": "./src/schemas.ts"
     }
   },
   "scripts": {
