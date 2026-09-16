@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import { createMiddleware } from "hono/factory";
+import { clientIpFromHeaders } from "../lib/client-ip";
 import { AppError } from "../lib/errors";
 
 interface Bucket {
@@ -18,11 +19,7 @@ interface RateLimitOptions {
 	onLimited?: (c: Context) => Response | Promise<Response>;
 }
 
-const defaultKeyFn = (c: Context) =>
-	c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
-	c.req.header("cf-connecting-ip") ??
-	c.req.header("x-real-ip") ??
-	"unknown";
+const defaultKeyFn = (c: Context) => clientIpFromHeaders(c.req.raw.headers);
 
 /**
  * In-memory sliding-window rate limiter. Single-process only — fine for a

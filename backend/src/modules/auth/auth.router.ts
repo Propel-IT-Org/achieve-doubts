@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { ipRestriction } from "hono/ip-restriction";
 import { env } from "../../env";
+import { clientIpFromHeaders } from "../../lib/client-ip";
 import type { AppEnv } from "../../lib/di";
 import { createRateLimiter } from "../../middleware/rate-limit";
 
@@ -12,10 +13,10 @@ const achieveAllowedIps = (env.ACHIEVE_ALLOWED_IPS ?? "")
 	.filter(Boolean);
 
 const achieveIpGate = ipRestriction(
-	(c) =>
-		c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
-		c.req.header("x-real-ip") ??
-		"unknown",
+	// Must be the proxy-observed address, not the first X-Forwarded-For entry:
+	// that one is caller-supplied and would let anyone forge their way past
+	// this allowlist. See lib/client-ip.ts.
+	(c) => clientIpFromHeaders(c.req.raw.headers),
 	{ allowList: achieveAllowedIps },
 	(_remote, c) =>
 		c.json(

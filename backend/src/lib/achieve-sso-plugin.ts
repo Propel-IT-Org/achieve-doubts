@@ -4,6 +4,7 @@ import { APIError, createAuthEndpoint } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
 import { z } from "zod";
 import { env } from "../env";
+import { clientIpFromHeaders } from "./client-ip";
 
 const TOKEN_TTL_SECONDS = 90;
 
@@ -274,8 +275,9 @@ export function achieveSsoPlugin(): BetterAuthPlugin {
 								userId,
 								batchId,
 								expiresAt: new Date(Date.now() + TOKEN_TTL_SECONDS * 1000),
-								createdIp:
-									ctx.request?.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+								createdIp: ctx.request
+									? clientIpFromHeaders(ctx.request.headers)
+									: null,
 								createdAt: new Date(),
 							},
 							forceAllowId: true,
