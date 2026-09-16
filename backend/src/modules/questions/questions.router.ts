@@ -1,4 +1,5 @@
 import { zValidator } from "@hono/zod-validator";
+import { fail, zodErrorHook } from "../../lib/errors";
 import { type Context, Hono } from "hono";
 import type { BlankInput } from "hono/types";
 import type { AppEnv } from "../../lib/di";
@@ -19,14 +20,14 @@ export const questionsRouter = new Hono<AppEnv>()
   .get(
     "/",
     optionalAuth,
-    zValidator("query", listQuestionsQuerySchema),
+    zValidator("query", listQuestionsQuerySchema, zodErrorHook),
     async (c) => {
       const query = c.req.valid("query");
 
       // `mine` is the only filter that needs an identity; everything else is
       // guest-readable.
       if (query.mine && !c.var.user) {
-        return c.json({ error: "Unauthorized" }, 401);
+        return fail(c, 401, "UNAUTHORIZED", "Unauthorized");
       }
 
       const result = await c.var.di
@@ -39,16 +40,18 @@ export const questionsRouter = new Hono<AppEnv>()
     "/",
     requireAuth,
     requirePermission({ question: ["create"] }),
-    zValidator("json", createQuestionSchema),
+    zValidator("json", createQuestionSchema, zodErrorHook),
     async (c) => {
       const input = c.req.valid("json");
 
       // A client can't attach an arbitrary URL — it has to be one our own
       // presign flow handed out.
       if (input.photoUrl && !isOwnUploadUrl(input.photoUrl)) {
-        return c.json(
-          { error: "photoUrl must be a URL returned by the upload presign flow" },
+        return fail(
+          c,
           400,
+          "VALIDATION_FAILED",
+          "photoUrl must be a URL returned by the upload presign flow",
         );
       }
 
@@ -61,7 +64,9 @@ export const questionsRouter = new Hono<AppEnv>()
           result.reason === "daily"
             ? "Daily question limit reached"
             : "Monthly question limit reached";
-        return c.json({ error: message }, 403);
+        // Distinct from a plain FORBIDDEN: the client shows a "you've hit
+        // your limit" state, not a "you're not allowed" one.
+        return fail(c, 403, "QUOTA_EXCEEDED", message);
       }
 
       c.var.di
@@ -97,7 +102,7 @@ export const questionsRouter = new Hono<AppEnv>()
   .get(
     "/:id",
     optionalAuth,
-    zValidator("param", questionIdParamSchema),
+    zValidator("param", questionIdParamSchema, zodErrorHook),
     async (c) => {
       const { id } = c.req.valid("param");
       const viewer = c.var.user;
@@ -107,7 +112,7 @@ export const questionsRouter = new Hono<AppEnv>()
         isStaff: viewer?.role === "staff",
       });
 
-      if (!question) return c.json({ error: "Question not found" }, 404);
+      if (!question) return fail(c, 404, "NOT_FOUND", "Question not found");
       return c.json(question);
     },
   )
@@ -115,7 +120,7 @@ export const questionsRouter = new Hono<AppEnv>()
     "/:id/lock",
     requireAuth,
     requirePermission({ question: ["claim"] }),
-    zValidator("param", questionIdParamSchema),
+    zValidator("param", questionIdParamSchema, zodErrorHook),
     async (c) => {
       const { id } = c.req.valid("param");
       const result = await c.var.di
@@ -124,14 +129,19 @@ export const questionsRouter = new Hono<AppEnv>()
 
       if (!result.ok) {
         if (result.reason === "followup_block") {
-          return c.json(
-            { error: "Answer your open follow-ups before locking new questions" },
+          return fail(
+            c,
             403,
+            "FOLLOWUP_BLOCKED",
+            "Answer your open follow-ups before locking new questions",
           );
         }
+        // Carries who currently holds the lock on top of the standard
+        // envelope, so the UI can name them instead of saying "unavailable".
         return c.json(
           {
             error: "Question is already locked or no longer available",
+            code: "CONFLICT" as const,
             status: result.current?.status ?? null,
             solverId: result.current?.solverId ?? null,
           },
@@ -150,7 +160,7 @@ export const questionsRouter = new Hono<AppEnv>()
     "/:id/unlock",
     requireAuth,
     requirePermission({ question: ["release"] }),
-    zValidator("param", questionIdParamSchema),
+    zValidator("param", questionIdParamSchema, zodErrorHook),
     async (c) => {
       const { id } = c.req.valid("param");
       const result = await c.var.di
@@ -158,9 +168,11 @@ export const questionsRouter = new Hono<AppEnv>()
         .unlockQuestion(id, c.var.user.id);
 
       if (!result.ok) {
-        return c.json(
-          { error: "You do not hold the active lock for this question" },
+        return fail(
+          c,
           403,
+          "FORBIDDEN",
+          "You do not hold the active lock for this question",
         );
       }
 
@@ -174,7 +186,7 @@ export const questionsRouter = new Hono<AppEnv>()
     "/:id/override",
     requireAuth,
     requirePermission({ question: ["override"] }),
-    zValidator("param", questionIdParamSchema),
+    zValidator("param", questionIdParamSchema, zodErrorHook),
     async (c) => {
       const { id } = c.req.valid("param");
       const result = await c.var.di
@@ -182,7 +194,7 @@ export const questionsRouter = new Hono<AppEnv>()
         .overrideQuestion(id, c.var.user.id);
 
       if (!result.ok) {
-        return c.json({ error: "Question is not currently assigned" }, 409);
+        return fail(c, 409, "CONFLICT", "Question is not currently assigned");
       }
 
       c.var.di.get("feed").broadcast("QUESTION_OVERRIDDEN", {
@@ -196,14 +208,14 @@ export const questionsRouter = new Hono<AppEnv>()
     "/:id",
     requireAuth,
     requirePermission({ question: ["delete"] }),
-    zValidator("param", questionIdParamSchema),
+    zValidator("param", questionIdParamSchema, zodErrorHook),
     async (c) => {
       const { id } = c.req.valid("param");
       const result = await c.var.di
         .get("questions")
         .softDeleteQuestion(id, c.var.user.id);
 
-      if (!result.ok) return c.json({ error: "Question not found" }, 404);
+      if (!result.ok) return fail(c, 404, "NOT_FOUND", "Question not found");
       return c.json(result.question);
     },
   );

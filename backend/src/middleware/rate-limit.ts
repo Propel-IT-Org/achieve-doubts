@@ -1,6 +1,6 @@
 import type { Context } from "hono";
 import { createMiddleware } from "hono/factory";
-import { HTTPException } from "hono/http-exception";
+import { AppError } from "../lib/errors";
 
 interface Bucket {
 	count: number;
@@ -14,7 +14,7 @@ interface RateLimitOptions {
 	max: number;
 	/** Derives the bucket key from the request. Defaults to the client IP. */
 	keyFn?: (c: Context) => string;
-	/** Custom response when the limit is hit. Defaults to a 429 HTTPException. */
+	/** Custom response when the limit is hit. Defaults to a 429 AppError. */
 	onLimited?: (c: Context) => Response | Promise<Response>;
 }
 
@@ -43,7 +43,7 @@ export function createRateLimiter({ windowMs, max, keyFn = defaultKeyFn, onLimit
 			bucket.count += 1;
 			if (bucket.count > max) {
 				if (onLimited) return await onLimited(c);
-				throw new HTTPException(429, { message: "Too many requests" });
+				throw new AppError(429, "RATE_LIMITED", "Too many requests");
 			}
 		}
 

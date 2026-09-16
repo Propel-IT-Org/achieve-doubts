@@ -28,19 +28,10 @@ export function validateMediaUrls(input: MediaInput): string | null {
 }
 
 /**
- * Shared zValidator failure hook so a bad body answers with `{ error }` —
- * the repo-wide contract — instead of @hono/zod-validator's default
- * `{ success: false, error: ZodError }` shape.
+ * Re-exported so the interaction routers keep their existing import site.
+ * The hook itself now lives with the rest of the error contract.
  */
-export function zodErrorHook(
-  result: { success: boolean; error?: { issues?: { message: string }[] } },
-  c: Context,
-) {
-  if (!result.success) {
-    const message = result.error?.issues?.[0]?.message ?? "Invalid request";
-    return c.json({ error: message }, 400);
-  }
-}
+export { zodErrorHook } from "../../lib/errors";
 
 /** Parses a `:id`-style route param into a positive integer, or null. */
 export function parseIdParam(raw: string | undefined): number | null {

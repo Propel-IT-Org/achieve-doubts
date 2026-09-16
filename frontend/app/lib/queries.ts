@@ -1,3 +1,4 @@
+import useSWRInfinite from "swr/infinite";
 import { api, unwrap } from "./api";
 
 /**
@@ -65,6 +66,12 @@ export type QuestionRow = {
   answeredAt: string | null;
 };
 
+/** One keyset page of the questions feed. */
+export type QuestionPage = {
+  items: QuestionRow[];
+  nextCursor: string | null;
+};
+
 export const questionsKey = (filters: QuestionListFilters) =>
   ["questions", filters] as const;
 
@@ -79,11 +86,7 @@ export function fetchQuestions(filters: QuestionListFilters) {
   if (filters.cursor) query.cursor = filters.cursor;
   if (filters.limit) query.limit = String(filters.limit);
 
-  return api.api.questions
-    .$get({ query })
-    .then((r) =>
-      unwrap<{ items: QuestionRow[]; nextCursor: string | null }>(r),
-    );
+  return api.api.questions.$get({ query }).then((r) => unwrap<QuestionPage>(r));
 }
 
 export const questionKey = (id: number) => ["question", id] as const;
@@ -122,6 +125,59 @@ export const fetchOpenCount = () =>
   api.api.questions.open.count.$get().then((r) =>
     unwrap<{ count: number }>(r),
   );
+
+/**
+ * Cursor-paginated questions list.
+ *
+ * The API paginates by keyset (`nextCursor`), not by page number, so each page
+ * key has to carry the *previous* page's cursor — which is exactly the shape
+ * `useSWRInfinite`'s `getKey(index, previousPageData)` provides.
+ *
+ * Deliberately not suspense: `setSize` would re-suspend the whole list on
+ * every "load more", throwing the reader back to a fallback. The first page is
+ * still primed from `clientLoader`, so the initial paint is immediate.
+ */
+export function useQuestionsInfinite(
+  filters: QuestionListFilters,
+  pageSize = 20,
+) {
+  const swr = useSWRInfinite(
+    (index, previous: QuestionPage | null) => {
+      // `null` ends the list — SWR stops requesting further pages.
+      if (previous && !previous.nextCursor) return null;
+      const cursor = index === 0 ? null : (previous?.nextCursor ?? null);
+      return ["questions-infinite", filters, cursor] as const;
+    },
+    ([, pageFilters, cursor]) =>
+      fetchQuestions({
+        ...pageFilters,
+        cursor: cursor ?? undefined,
+        limit: pageSize,
+      }),
+    {
+      // The first page revalidating on every append would refetch the whole
+      // list each time the reader scrolls.
+      revalidateFirstPage: false,
+      revalidateOnFocus: false,
+      suspense: false,
+    },
+  );
+
+  const pages = swr.data ?? [];
+  const items = pages.flatMap((page) => page.items);
+  const last = pages[pages.length - 1];
+
+  return {
+    ...swr,
+    items,
+    hasMore: Boolean(last?.nextCursor),
+    /** True only while an *additional* page is in flight, not the first. */
+    isLoadingMore:
+      swr.isValidating && pages.length > 0 && swr.size > pages.length,
+    isLoadingInitial: !swr.data && !swr.error,
+    loadMore: () => swr.setSize((size) => size + 1),
+  };
+}
 
 // ---------- comments / thread ----------
 

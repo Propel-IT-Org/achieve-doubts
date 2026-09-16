@@ -1,4 +1,5 @@
 import { zValidator } from "@hono/zod-validator";
+import { codeForStatus, fail, zodErrorHook } from "../../lib/errors";
 import { Hono } from "hono";
 import type { AppEnv } from "../../lib/di";
 import { requireAuth, requirePermission } from "../../middleware/auth";
@@ -15,10 +16,10 @@ export const reportsRouter = new Hono<AppEnv>()
     "/questions/:id/reports",
     requireAuth,
     requirePermission({ report: ["create"] }),
-    zValidator("json", createReportSchema),
+    zValidator("json", createReportSchema, zodErrorHook),
     async (c) => {
       const questionId = parseIdParam(c.req.param("id"));
-      if (!questionId) return c.json({ error: "Invalid question id" }, 400);
+      if (!questionId) return fail(c, 400, "VALIDATION_FAILED", "Invalid question id");
 
       const { reason, text } = c.req.valid("json");
       const result = await c.var.di
@@ -26,7 +27,15 @@ export const reportsRouter = new Hono<AppEnv>()
         .createReport(questionId, c.var.user.id, reason, text);
 
       if ("error" in result) {
-        return c.json({ error: result.error }, result.status);
+        // The service picks the status (404 unknown question, 403 not the
+        // asker, 409 already reported), so the code follows from it.
+        const status = result.status ?? 400;
+        return fail(
+          c,
+          status,
+          codeForStatus(status),
+          result.error ?? "Report could not be created",
+        );
       }
       return c.json(result.report, 201);
     },

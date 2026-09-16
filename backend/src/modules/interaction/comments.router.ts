@@ -1,3 +1,4 @@
+import { fail } from "../../lib/errors";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import type { AppEnv } from "../../lib/di";
@@ -9,7 +10,7 @@ export const commentsRouter = new Hono<AppEnv>()
   // Public: guests can read the discussion even though they can't post.
   .get("/:id/comments", async (c) => {
     const questionId = parseIdParam(c.req.param("id"));
-    if (!questionId) return c.json({ error: "Invalid question id" }, 400);
+    if (!questionId) return fail(c, 400, "VALIDATION_FAILED", "Invalid question id");
 
     const comments = await c.var.di.get("comments").listComments(questionId);
     return c.json({ comments });
@@ -24,17 +25,17 @@ export const commentsRouter = new Hono<AppEnv>()
     zValidator("json", createCommentSchema, zodErrorHook),
     async (c) => {
       const questionId = parseIdParam(c.req.param("id"));
-      if (!questionId) return c.json({ error: "Invalid question id" }, 400);
+      if (!questionId) return fail(c, 400, "VALIDATION_FAILED", "Invalid question id");
 
       const input = c.req.valid("json");
       const mediaError = validateMediaUrls(input);
-      if (mediaError) return c.json({ error: mediaError }, 400);
+      if (mediaError) return fail(c, 400, "VALIDATION_FAILED", mediaError);
 
       const result = await c.var.di
         .get("comments")
         .createComment(questionId, c.var.user.id, input);
 
-      if ("error" in result) return c.json({ error: "Question not found" }, 404);
+      if ("error" in result) return fail(c, 404, "NOT_FOUND", "Question not found");
       return c.json({ comment: result.comment }, 201);
     },
   )
@@ -45,13 +46,13 @@ export const commentsRouter = new Hono<AppEnv>()
     async (c) => {
       const questionId = parseIdParam(c.req.param("id"));
       const commentId = parseIdParam(c.req.param("cid"));
-      if (!questionId || !commentId) return c.json({ error: "Invalid id" }, 400);
+      if (!questionId || !commentId) return fail(c, 400, "VALIDATION_FAILED", "Invalid id");
 
       const comment = await c.var.di
         .get("comments")
         .deleteComment(questionId, commentId, c.var.user.id);
 
-      if (!comment) return c.json({ error: "Comment not found" }, 404);
+      if (!comment) return fail(c, 404, "NOT_FOUND", "Comment not found");
       return c.json({ comment });
     },
   );

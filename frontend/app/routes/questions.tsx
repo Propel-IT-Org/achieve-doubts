@@ -7,11 +7,12 @@ import type { Route } from "./+types/questions";
 import {
   fetchQuestions,
   fetchSubjects,
-  questionsKey,
   subjectsKey,
   swrConfig,
+  useQuestionsInfinite,
   type QuestionListFilters,
 } from "~/lib/queries";
+import { useFeedSubscription } from "~/lib/realtime";
 import { isSolver, useSession } from "~/lib/session";
 import { buildTaxonomyLookup, QuestionCard } from "~/components/question-card";
 
@@ -51,16 +52,15 @@ export async function clientLoader({ request }: Route.ClientLoaderArgs) {
   const url = new URL(request.url);
   const filters = filtersFromParams(url.searchParams);
   preload(subjectsKey(), fetchSubjects);
-  preload(questionsKey(filters), () => fetchQuestions(filters));
+  // useSWRInfinite stores each page under its own key, so priming page 0 here
+  // is what makes the first paint immediate. `null` is the page-0 cursor.
+  preload(["questions-infinite", filters, null], () => fetchQuestions(filters));
   return null;
 }
 
 function QuestionList({ filters }: { filters: QuestionListFilters }) {
-  const { data } = useSWR(
-    questionsKey(filters),
-    () => fetchQuestions(filters),
-    swrConfig,
-  );
+  const { items, hasMore, loadMore, isLoadingMore, isLoadingInitial, error } =
+    useQuestionsInfinite(filters);
   const { data: subjects } = useSWR(subjectsKey(), fetchSubjects, swrConfig);
 
   const taxonomy = useMemo(
@@ -68,7 +68,22 @@ function QuestionList({ filters }: { filters: QuestionListFilters }) {
     [subjects],
   );
 
-  const items = data?.items ?? [];
+  if (error) {
+    return (
+      <div className="err" role="alert">
+        <AlertTriangle size={16} />
+        {error instanceof Error ? error.message : "Couldn't load questions."}
+      </div>
+    );
+  }
+
+  if (isLoadingInitial) {
+    return (
+      <p className="muted" style={{ margin: 0 }} aria-live="polite">
+        Loading questions…
+      </p>
+    );
+  }
 
   if (items.length === 0) {
     return (
@@ -88,11 +103,33 @@ function QuestionList({ filters }: { filters: QuestionListFilters }) {
   }
 
   return (
-    <div className="cards">
-      {items.map((question) => (
-        <QuestionCard key={question.id} question={question} taxonomy={taxonomy} />
-      ))}
-    </div>
+    <>
+      <div className="cards">
+        {items.map((question) => (
+          <QuestionCard
+            key={question.id}
+            question={question}
+            taxonomy={taxonomy}
+          />
+        ))}
+      </div>
+
+      {hasMore && (
+        <div
+          className="cta"
+          style={{ justifyContent: "center", marginTop: 24 }}
+        >
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => loadMore()}
+            disabled={isLoadingMore}
+          >
+            {isLoadingMore ? "Loading…" : "Load more questions"}
+          </button>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -103,6 +140,10 @@ export default function QuestionsPage() {
 
   const filters = filtersFromParams(params);
   const { data: subjects } = useSWR(subjectsKey(), fetchSubjects, swrConfig);
+
+  // Solvers race each other for locks, so their list has to stay live. The
+  // endpoint requires the solver claim permission, so nobody else subscribes.
+  useFeedSubscription(isSolver(user?.role));
 
   const subject = params.get("subject") ?? "";
   const book = params.get("book") ?? "";

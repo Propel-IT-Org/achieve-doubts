@@ -12,6 +12,10 @@
     "./schemas": {
       "default": "./src/schemas.ts",
       "types": "./src/schemas.ts"
+    },
+    "./errors": {
+      "default": "./src/lib/errors.ts",
+      "types": "./src/lib/errors.ts"
     }
   },
   "scripts": {

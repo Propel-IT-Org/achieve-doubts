@@ -9,6 +9,7 @@ import { requestId } from "hono/request-id";
 import { secureHeaders } from "hono/secure-headers";
 import { env } from "./env";
 import { startLockSweeper } from "./jobs/lock-sweeper";
+import { type ApiErrorBody, toErrorBody } from "./lib/errors";
 import { type AppContainer, type AppEnv, container } from "./lib/di";
 import { requireAuth, requirePermission } from "./middleware/auth";
 import { createRateLimiter } from "./middleware/rate-limit";
@@ -37,7 +38,14 @@ export function createApp(customContainer: AppContainer = container) {
       // Uploads go through presigned URLs, not this API — 5MB comfortably
       // covers JSON payloads for every route we serve directly.
       maxSize: 5 * 1024 * 1024,
-      onError: (c) => c.json({ error: "Request body too large" }, 413),
+      onError: (c) =>
+        c.json(
+          {
+            error: "Request body too large",
+            code: "PAYLOAD_TOO_LARGE",
+          } satisfies ApiErrorBody,
+          413,
+        ),
     }),
   );
   app.use(
@@ -84,17 +92,37 @@ export function createApp(customContainer: AppContainer = container) {
     }),
   );
 
+  // Root error handling. Every failure that escapes a handler — thrown
+  // HTTPException/AppError, better-auth's APIError, or an outright bug —
+  // leaves through here as one ApiErrorBody, so the client only ever parses
+  // a single error shape.
   app.onError((err, c) => {
-    if (err instanceof HTTPException) {
-      // A route that supplied its own Response (e.g. a redirect) wins as-is.
-      if (err.res) return err.res;
-      return c.json({ error: err.message }, err.status);
+    // A route that supplied its own Response (e.g. a redirect) wins as-is.
+    if (err instanceof HTTPException && err.res) return err.res;
+
+    const requestId = c.get("requestId");
+    const body = toErrorBody(err, requestId);
+
+    // 5xx means we did something wrong: log it with the request id so a
+    // user-reported failure can be traced back to this line.
+    if (body.code === "INTERNAL_ERROR") {
+      console.error(`[unhandled] requestId=${requestId ?? "-"}`, err);
     }
-    console.error("[unhandled]", err);
-    return c.json({ error: "Internal server error" }, 500);
+
+    const status = err instanceof HTTPException ? err.status : 500;
+    return c.json(body, status);
   });
 
-  app.notFound((c) => c.json({ error: "Not found" }, 404));
+  app.notFound((c) =>
+    c.json(
+      {
+        error: `No route for ${c.req.method} ${new URL(c.req.url).pathname}`,
+        code: "NOT_FOUND",
+        requestId: c.get("requestId"),
+      } satisfies ApiErrorBody,
+      404,
+    ),
+  );
 
   return (
     app

@@ -1,4 +1,5 @@
 import { zValidator } from "@hono/zod-validator";
+import { fail, zodErrorHook } from "../../lib/errors";
 import { Hono } from "hono";
 import type { AppEnv } from "../../lib/di";
 import { requireAuth, requirePermission } from "../../middleware/auth";
@@ -26,7 +27,7 @@ export const adminRouter = new Hono<AppEnv>()
     "/reports",
     requireAuth,
     requirePermission({ report: ["resolve"] }),
-    zValidator("query", adminReportsQuerySchema),
+    zValidator("query", adminReportsQuerySchema, zodErrorHook),
     async (c) => {
       const rows = await c.var.di
         .get("reports")
@@ -40,12 +41,12 @@ export const adminRouter = new Hono<AppEnv>()
     requirePermission({ report: ["resolve"] }),
     async (c) => {
       const id = parseIdParam(c.req.param("id"));
-      if (!id) return c.json({ error: "Invalid report id" }, 400);
+      if (!id) return fail(c, 400, "VALIDATION_FAILED", "Invalid report id");
 
       const result = await c.var.di
         .get("reports")
         .resolveReport(id, c.var.user.id);
-      if ("error" in result) return c.json({ error: result.error }, 404);
+      if ("error" in result) return fail(c, 404, "NOT_FOUND", result.error ?? "Request failed");
       return c.json(result.report);
     },
   )
@@ -54,7 +55,7 @@ export const adminRouter = new Hono<AppEnv>()
     "/students",
     requireAuth,
     requirePermission({ studentProfile: ["list"] }),
-    zValidator("query", studentSearchQuerySchema),
+    zValidator("query", studentSearchQuerySchema, zodErrorHook),
     async (c) => {
       const { q, limit, offset } = c.req.valid("query");
       const rows = await c.var.di.get("admin").listStudents(q, limit, offset);
@@ -67,7 +68,7 @@ export const adminRouter = new Hono<AppEnv>()
     requirePermission({ studentProfile: ["list"] }),
     async (c) => {
       const row = await c.var.di.get("admin").getStudent(c.req.param("id"));
-      if (!row) return c.json({ error: "Student not found" }, 404);
+      if (!row) return fail(c, 404, "NOT_FOUND", "Student not found");
       return c.json(row);
     },
   )
@@ -75,7 +76,7 @@ export const adminRouter = new Hono<AppEnv>()
     "/students/:id/active",
     requireAuth,
     requirePermission({ studentProfile: ["update"] }),
-    zValidator("json", activeBodySchema),
+    zValidator("json", activeBodySchema, zodErrorHook),
     async (c) => {
       const { active } = c.req.valid("json");
       await c.var.di
@@ -102,13 +103,13 @@ export const adminRouter = new Hono<AppEnv>()
     "/solvers",
     requireAuth,
     requirePermission({ solverProfile: ["create"] }),
-    zValidator("json", createSolverSchema),
+    zValidator("json", createSolverSchema, zodErrorHook),
     async (c) => {
       const result = await c.var.di
         .get("admin")
         .createSolver(c.req.valid("json"), c.req.raw.headers, c.var.user.id);
 
-      if ("error" in result) return c.json({ error: result.error }, 409);
+      if ("error" in result) return fail(c, 409, "CONFLICT", result.error ?? "Request failed");
       return c.json(result.solver, 201);
     },
   )
@@ -116,7 +117,7 @@ export const adminRouter = new Hono<AppEnv>()
     "/solvers/:id/active",
     requireAuth,
     requirePermission({ solverProfile: ["update"] }),
-    zValidator("json", activeBodySchema),
+    zValidator("json", activeBodySchema, zodErrorHook),
     async (c) => {
       const { active } = c.req.valid("json");
       await c.var.di
@@ -134,7 +135,7 @@ export const adminRouter = new Hono<AppEnv>()
     "/solvers/:id/admin",
     requireAuth,
     requirePermission({ solverProfile: ["update"] }),
-    zValidator("json", solverAdminFlagSchema),
+    zValidator("json", solverAdminFlagSchema, zodErrorHook),
     async (c) => {
       const { isAdminSolver } = c.req.valid("json");
       await c.var.di
@@ -159,13 +160,13 @@ export const adminRouter = new Hono<AppEnv>()
     "/batches",
     requireAuth,
     requirePermission({ batch: ["create"] }),
-    zValidator("json", createBatchSchema),
+    zValidator("json", createBatchSchema, zodErrorHook),
     async (c) => {
       const { id, label } = c.req.valid("json");
       const result = await c.var.di
         .get("admin")
         .createBatch(id, label, c.var.user.id);
-      if ("error" in result) return c.json({ error: result.error }, 409);
+      if ("error" in result) return fail(c, 409, "CONFLICT", result.error ?? "Request failed");
       return c.json(result.batch, 201);
     },
   )
@@ -173,7 +174,7 @@ export const adminRouter = new Hono<AppEnv>()
     "/batches/:id/active",
     requireAuth,
     requirePermission({ batch: ["update"] }),
-    zValidator("json", activeBodySchema),
+    zValidator("json", activeBodySchema, zodErrorHook),
     async (c) => {
       const { active } = c.req.valid("json");
       const result = await c.var.di
@@ -185,7 +186,7 @@ export const adminRouter = new Hono<AppEnv>()
           c.var.user.id,
         );
 
-      if ("error" in result) return c.json({ error: result.error }, 404);
+      if ("error" in result) return fail(c, 404, "NOT_FOUND", result.error ?? "Request failed");
       return c.json({
         batch: result.batch,
         affectedStudents: result.affectedStudents,
@@ -203,7 +204,7 @@ export const adminRouter = new Hono<AppEnv>()
     "/quota",
     requireAuth,
     requirePermission({ batch: ["update"] }),
-    zValidator("json", quotaSchema),
+    zValidator("json", quotaSchema, zodErrorHook),
     async (c) => {
       const row = await c.var.di
         .get("admin")
@@ -216,14 +217,14 @@ export const adminRouter = new Hono<AppEnv>()
     "/analytics",
     requireAuth,
     requirePermission({ analytics: ["list"] }),
-    zValidator("query", rangeQuerySchema),
+    zValidator("query", rangeQuerySchema, zodErrorHook),
     async (c) => c.json(await c.var.di.get("admin").analytics(c.req.valid("query"))),
   )
   .get(
     "/analytics/rankings",
     requireAuth,
     requirePermission({ analytics: ["list"] }),
-    zValidator("query", rankingsQuerySchema),
+    zValidator("query", rankingsQuerySchema, zodErrorHook),
     async (c) => {
       const { minAnswered, ...range } = c.req.valid("query");
       return c.json(await c.var.di.get("admin").rankings(range, minAnswered));
@@ -234,7 +235,7 @@ export const adminRouter = new Hono<AppEnv>()
     "/payouts",
     requireAuth,
     requirePermission({ payout: ["list"] }),
-    zValidator("query", rangeQuerySchema),
+    zValidator("query", rangeQuerySchema, zodErrorHook),
     async (c) => {
       const { from, to } = c.req.valid("query");
       if (from && to) {
@@ -247,7 +248,7 @@ export const adminRouter = new Hono<AppEnv>()
     "/payouts",
     requireAuth,
     requirePermission({ payout: ["generate"] }),
-    zValidator("json", payoutSnapshotSchema),
+    zValidator("json", payoutSnapshotSchema, zodErrorHook),
     async (c) => {
       const { from, to, note } = c.req.valid("json");
       const result = await c.var.di
@@ -262,12 +263,12 @@ export const adminRouter = new Hono<AppEnv>()
     requirePermission({ payout: ["markPaid"] }),
     async (c) => {
       const id = parseIdParam(c.req.param("id"));
-      if (!id) return c.json({ error: "Invalid payout id" }, 400);
+      if (!id) return fail(c, 400, "VALIDATION_FAILED", "Invalid payout id");
 
       const result = await c.var.di
         .get("admin")
         .markPayoutPaid(id, c.var.user.id);
-      if ("error" in result) return c.json({ error: result.error }, 404);
+      if ("error" in result) return fail(c, 404, "NOT_FOUND", result.error ?? "Request failed");
       return c.json(result.period);
     },
   );

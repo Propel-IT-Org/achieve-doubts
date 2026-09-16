@@ -1,3 +1,4 @@
+import { fail } from "../../lib/errors";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import type { AppEnv } from "../../lib/di";
@@ -12,7 +13,7 @@ export const threadRouter = new Hono<AppEnv>()
     requirePermission({ thread: ["list"] }),
     async (c) => {
       const questionId = parseIdParam(c.req.param("id"));
-      if (!questionId) return c.json({ error: "Invalid question id" }, 400);
+      if (!questionId) return fail(c, 400, "VALIDATION_FAILED", "Invalid question id");
 
       const service = c.var.di.get("thread");
       if (!(await service.hasActiveSolution(questionId))) {
@@ -29,35 +30,39 @@ export const threadRouter = new Hono<AppEnv>()
     zValidator("json", createThreadMessageSchema, zodErrorHook),
     async (c) => {
       const questionId = parseIdParam(c.req.param("id"));
-      if (!questionId) return c.json({ error: "Invalid question id" }, 400);
+      if (!questionId) return fail(c, 400, "VALIDATION_FAILED", "Invalid question id");
 
       const user = c.var.user;
       const service = c.var.di.get("thread");
 
       const question = await service.getQuestion(questionId);
-      if (!question) return c.json({ error: "Question not found" }, 404);
+      if (!question) return fail(c, 404, "NOT_FOUND", "Question not found");
 
       // Posting is limited to the two parties, regardless of role — a
       // permission alone can't express "this particular question's asker".
       const isAsker = question.askerId === user.id;
       const isSolver = question.solverId === user.id;
       if (!isAsker && !isSolver) {
-        return c.json(
-          { error: "Only the asker or the assigned solver may post here" },
+        return fail(
+          c,
           403,
+          "FORBIDDEN",
+          "Only the asker or the assigned solver may post here",
         );
       }
 
       if (!(await service.hasActiveSolution(questionId))) {
-        return c.json(
-          { error: "The follow-up thread opens once a solution is submitted" },
+        return fail(
+          c,
           400,
+          "VALIDATION_FAILED",
+          "The follow-up thread opens once a solution is submitted",
         );
       }
 
       const input = c.req.valid("json");
       const mediaError = validateMediaUrls(input);
-      if (mediaError) return c.json({ error: mediaError }, 400);
+      if (mediaError) return fail(c, 400, "VALIDATION_FAILED", mediaError);
 
       const authorSide: "asker" | "solver" = isAsker ? "asker" : "solver";
       const notifyUserId = authorSide === "asker" ? question.solverId : null;
@@ -80,13 +85,13 @@ export const threadRouter = new Hono<AppEnv>()
     async (c) => {
       const questionId = parseIdParam(c.req.param("id"));
       const msgId = parseIdParam(c.req.param("msgId"));
-      if (!questionId || !msgId) return c.json({ error: "Invalid id" }, 400);
+      if (!questionId || !msgId) return fail(c, 400, "VALIDATION_FAILED", "Invalid id");
 
       const message = await c.var.di
         .get("thread")
         .deleteMessage(questionId, msgId, c.var.user.id);
 
-      if (!message) return c.json({ error: "Thread message not found" }, 404);
+      if (!message) return fail(c, 404, "NOT_FOUND", "Thread message not found");
       return c.json({ message });
     },
   );

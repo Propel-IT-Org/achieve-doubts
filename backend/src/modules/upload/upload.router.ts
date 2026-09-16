@@ -1,4 +1,5 @@
 import { zValidator } from "@hono/zod-validator";
+import { fail, zodErrorHook } from "../../lib/errors";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../../lib/di";
@@ -13,7 +14,7 @@ const presignSchema = z.object({
 });
 
 export const uploadRouter = new Hono<AppEnv>()
-  .post("/presign", requireAuth, zValidator("json", presignSchema), async (c) => {
+  .post("/presign", requireAuth, zValidator("json", presignSchema, zodErrorHook), async (c) => {
     const { fileName, contentType } = c.req.valid("json");
     const presigned = await c.var.di
       .get("upload")

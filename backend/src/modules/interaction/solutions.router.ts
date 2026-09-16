@@ -1,3 +1,4 @@
+import { fail } from "../../lib/errors";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import type { AppEnv } from "../../lib/di";
@@ -18,11 +19,11 @@ export const solutionsRouter = new Hono<AppEnv>()
     zValidator("json", createSolutionSchema, zodErrorHook),
     async (c) => {
       const questionId = parseIdParam(c.req.param("id"));
-      if (!questionId) return c.json({ error: "Invalid question id" }, 400);
+      if (!questionId) return fail(c, 400, "VALIDATION_FAILED", "Invalid question id");
 
       const input = c.req.valid("json");
       const mediaError = validateMediaUrls(input);
-      if (mediaError) return c.json({ error: mediaError }, 400);
+      if (mediaError) return fail(c, 400, "VALIDATION_FAILED", mediaError);
 
       const result = await c.var.di
         .get("solutions")
@@ -30,12 +31,14 @@ export const solutionsRouter = new Hono<AppEnv>()
 
       if ("error" in result) {
         if (result.error === "lock") {
-          return c.json(
-            { error: "Cannot submit solution: lock expired or not held by you" },
+          return fail(
+            c,
             403,
+            "FORBIDDEN",
+            "Cannot submit solution: lock expired or not held by you",
           );
         }
-        return c.json({ error: "This question already has a solution" }, 409);
+        return fail(c, 409, "CONFLICT", "This question already has a solution");
       }
 
       c.var.di
@@ -51,7 +54,7 @@ export const solutionsRouter = new Hono<AppEnv>()
     requirePermission({ solution: ["delete"] }),
     async (c) => {
       const questionId = parseIdParam(c.req.param("id"));
-      if (!questionId) return c.json({ error: "Invalid question id" }, 400);
+      if (!questionId) return fail(c, 400, "VALIDATION_FAILED", "Invalid question id");
 
       const result = await c.var.di
         .get("solutions")
@@ -59,9 +62,9 @@ export const solutionsRouter = new Hono<AppEnv>()
 
       if ("error" in result) {
         if (result.error === "not_found") {
-          return c.json({ error: "Solution not found" }, 404);
+          return fail(c, 404, "NOT_FOUND", "Solution not found");
         }
-        return c.json({ error: "Forbidden: not your solution" }, 403);
+        return fail(c, 403, "FORBIDDEN", "Forbidden: not your solution");
       }
 
       return c.json({ question: result.question });
@@ -74,7 +77,7 @@ export const solutionsRouter = new Hono<AppEnv>()
     zValidator("json", ratingSchema, zodErrorHook),
     async (c) => {
       const questionId = parseIdParam(c.req.param("id"));
-      if (!questionId) return c.json({ error: "Invalid question id" }, 400);
+      if (!questionId) return fail(c, 400, "VALIDATION_FAILED", "Invalid question id");
 
       const { value } = c.req.valid("json");
       const result = await c.var.di
@@ -83,12 +86,12 @@ export const solutionsRouter = new Hono<AppEnv>()
 
       if ("error" in result) {
         if (result.error === "not_found") {
-          return c.json({ error: "Question not found" }, 404);
+          return fail(c, 404, "NOT_FOUND", "Question not found");
         }
         if (result.error === "forbidden") {
-          return c.json({ error: "Only the asker can rate this question" }, 403);
+          return fail(c, 403, "FORBIDDEN", "Only the asker can rate this question");
         }
-        return c.json({ error: "This question has not been answered yet" }, 400);
+        return fail(c, 400, "VALIDATION_FAILED", "This question has not been answered yet");
       }
 
       return c.json({ question: result.question });

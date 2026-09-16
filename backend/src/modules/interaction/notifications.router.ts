@@ -1,4 +1,5 @@
 import { zValidator } from "@hono/zod-validator";
+import { fail, zodErrorHook } from "../../lib/errors";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../../lib/di";
@@ -26,7 +27,7 @@ export const notificationsRouter = new Hono<AppEnv>()
     "/",
     requireAuth,
     requirePermission({ notification: ["list"] }),
-    zValidator("query", listQuerySchema),
+    zValidator("query", listQuerySchema, zodErrorHook),
     async (c) => {
       const query = c.req.valid("query");
       const items = await c.var.di
@@ -63,13 +64,13 @@ export const notificationsRouter = new Hono<AppEnv>()
     requirePermission({ notification: ["update"] }),
     async (c) => {
       const id = parseIdParam(c.req.param("id"));
-      if (!id) return c.json({ error: "Invalid notification id" }, 400);
+      if (!id) return fail(c, 400, "VALIDATION_FAILED", "Invalid notification id");
 
       const row = await c.var.di
         .get("notifications")
         .markRead(c.var.user.id, id);
 
-      if (!row) return c.json({ error: "Notification not found" }, 404);
+      if (!row) return fail(c, 404, "NOT_FOUND", "Notification not found");
       return c.json({ notification: row });
     },
   );

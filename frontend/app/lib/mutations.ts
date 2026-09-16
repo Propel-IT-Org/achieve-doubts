@@ -1,7 +1,13 @@
 import useSWRMutation from "swr/mutation";
 import { mutate } from "swr";
 import { api, unwrap } from "./api";
-import type { CommentRow, QuestionRow, SolutionRow, ThreadRow } from "./queries";
+import {
+  unreadKey,
+  type CommentRow,
+  type QuestionRow,
+  type SolutionRow,
+  type ThreadRow,
+} from "./queries";
 
 /**
  * Every write goes through `useSWRMutation`. After a successful write we
@@ -204,16 +210,34 @@ export function useCreateReport(questionId: number) {
 
 // ---------- notifications ----------
 
+/**
+ * Marking one notification read updates the header badge optimistically —
+ * the badge is the thing the reader is watching when they tap, so waiting a
+ * round-trip to decrement it feels broken. The count is rolled back if the
+ * write fails, then reconciled against the server either way.
+ */
 export function useMarkNotificationRead() {
   return useSWRMutation(
     ["notifications", "read"],
     async (_key, { arg }: { arg: { id: number } }) => {
-      const res = await api.api.me.notifications[":id"].read.$post({
-        param: { id: String(arg.id) },
-      });
-      const out = await unwrap<unknown>(res);
-      await revalidate("notifications");
-      return out;
+      const previous = await mutate<{ count: number }>(
+        unreadKey(),
+        (current) => ({ count: Math.max(0, (current?.count ?? 1) - 1) }),
+        { revalidate: false },
+      );
+
+      try {
+        const res = await api.api.me.notifications[":id"].read.$post({
+          param: { id: String(arg.id) },
+        });
+        const out = await unwrap<unknown>(res);
+        await revalidate("notifications");
+        return out;
+      } catch (err) {
+        // Put the badge back where it was before re-throwing.
+        await mutate(unreadKey(), previous, { revalidate: true });
+        throw err;
+      }
     },
   );
 }

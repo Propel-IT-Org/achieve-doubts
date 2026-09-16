@@ -1,3 +1,4 @@
+import { fail } from "../../lib/errors";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import type { AppEnv } from "../../lib/di";
@@ -39,7 +40,7 @@ export const profilesRouter = new Hono<AppEnv>()
       .where(and(eq(user.id, id), eq(user.role, "student")))
       .then((rows) => rows[0]);
 
-    if (!row) return c.json({ error: "Student not found" }, 404);
+    if (!row) return fail(c, 404, "NOT_FOUND", "Student not found");
 
     const [stats] = await db
       .select({
@@ -92,7 +93,7 @@ export const profilesRouter = new Hono<AppEnv>()
       .where(and(eq(user.id, id), sql`${user.role} in ('solver','adminSolver')`))
       .then((rows) => rows[0]);
 
-    if (!row) return c.json({ error: "Solver not found" }, 404);
+    if (!row) return fail(c, 404, "NOT_FOUND", "Solver not found");
 
     const stats = await computeSolverStats(db, id);
 

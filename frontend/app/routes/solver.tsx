@@ -11,6 +11,7 @@ import {
   subjectsKey,
   swrConfig,
 } from "~/lib/queries";
+import { useFeedSubscription } from "~/lib/realtime";
 import { ago, dur, fmt, pct, shortName } from "~/lib/format";
 import { isSolver, useSession } from "~/lib/session";
 import { Avatar, Gate } from "~/components/primitives";
@@ -58,6 +59,10 @@ function DashboardBody({ name, isAdmin }: { name: string; isAdmin: boolean }) {
   const { data } = useSWR(dashboardKey(), fetchDashboard, swrConfig);
   const { data: subjects } = useSWR(subjectsKey(), fetchSubjects, swrConfig);
   const taxonomy = useMemo(() => buildTaxonomyLookup(subjects ?? []), [subjects]);
+
+  // Keeps the open-question count and "locked by you" list honest while the
+  // dashboard sits open.
+  useFeedSubscription(true);
 
   if (!data) return null;
 
