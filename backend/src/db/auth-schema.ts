@@ -16,6 +16,10 @@ export const user = pgTable("user", {
   banned: boolean("banned").default(false),
   banReason: text("ban_reason"),
   banExpires: timestamp("ban_expires"),
+  // Added by better-auth's `username` plugin — solver and staff sign in with
+  // these; students never set them (SSO-only, see achieve-sso-plugin.ts).
+  username: text("username").unique(),
+  displayUsername: text("display_username"),
 });
 
 export const session = pgTable(

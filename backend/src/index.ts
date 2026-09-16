@@ -10,10 +10,7 @@ import { secureHeaders } from "hono/secure-headers";
 import { env } from "./env";
 import { type AppContainer, type AppEnv, container } from "./lib/di";
 import { createRateLimiter } from "./middleware/rate-limit";
-import { attestationRouter } from "./modules/attestation/attestation.router";
 import { authRouter } from "./modules/auth/auth.router";
-import { doubtsRouter } from "./modules/doubts/doubts.router";
-import { solutionsRouter } from "./modules/solutions/solutions.router";
 import { uploadRouter } from "./modules/upload/upload.router";
 import { getServer, websocket } from "./ws/hub";
 
@@ -45,7 +42,6 @@ export function createApp(customContainer: AppContainer = container) {
       allowHeaders: [
         "Content-Type",
         "Authorization",
-        "X-App-Check-Token",
         "X-Achieve-Auth",
         "Cookie",
       ],
@@ -95,10 +91,7 @@ export function createApp(customContainer: AppContainer = container) {
   return app
     .basePath("/api")
     .route("/auth", authRouter)
-    .route("/doubts", doubtsRouter)
-    .route("/solutions", solutionsRouter)
-    .route("/upload", uploadRouter)
-    .route("/attestation", attestationRouter);
+    .route("/upload", uploadRouter);
 }
 
 const app = createApp();
