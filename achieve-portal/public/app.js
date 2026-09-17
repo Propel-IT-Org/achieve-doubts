@@ -8,6 +8,8 @@ const ERRORS = {
     "The portal is missing ACHIEVE_SHARED_SECRET or PORTAL_ACCESS_CODE.",
   API_UNREACHABLE: "The Doubts API couldn't be reached.",
   BAD_REDIRECT: "The Doubts API sent back an unexpected redirect.",
+  BLOCKED_BEFORE_API:
+    "Something in front of the API refused the request (Cloudflare or the reverse proxy) — it never reached Doubts. Check the worker logs for the response it returned.",
   INVALID_PAYLOAD: "Doubts rejected the details: a field is missing or malformed.",
   INVALID_AUTH: "Doubts rejected the shared secret.",
   IP_NOT_ALLOWED:

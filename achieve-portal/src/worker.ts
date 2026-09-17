@@ -79,15 +79,30 @@ async function startDoubtSolve(request: Request, env: Env): Promise<Response> {
     return backToPortal(request, "API_UNREACHABLE");
   }
 
-  const body = (await res.json().catch(() => null)) as
-    | InitiateSuccess
-    | InitiateError
-    | null;
+  // Read as text first: a refusal from Cloudflare or a reverse proxy is an
+  // HTML page, and the difference between that and the API's own JSON
+  // decides who refused this.
+  const raw = await res.text();
+  let body: InitiateSuccess | InitiateError | null = null;
+  try {
+    body = JSON.parse(raw) as InitiateSuccess | InitiateError;
+  } catch {
+    body = null;
+  }
 
   if (!res.ok || body?.status !== "success") {
-    const code = body?.status === "error" ? body.error_code : `HTTP_${res.status}`;
-    console.warn("[portal] initiate refused", res.status, body);
-    return backToPortal(request, code);
+    if (body?.status === "error") {
+      console.warn("[portal] API refused:", res.status, body.error_code, body.message);
+      return backToPortal(request, body.error_code);
+    }
+    // Not the API's error envelope: something in front of it answered.
+    console.warn(
+      `[portal] non-API response ${res.status} ${res.headers.get("content-type") ?? "no content-type"}`,
+      `cf-ray=${res.headers.get("cf-ray") ?? "none"}`,
+      `server=${res.headers.get("server") ?? "unknown"}`,
+      raw.slice(0, 300),
+    );
+    return backToPortal(request, res.status === 403 ? "BLOCKED_BEFORE_API" : `HTTP_${res.status}`);
   }
 
   // Only ever forward the browser to the API we called.
