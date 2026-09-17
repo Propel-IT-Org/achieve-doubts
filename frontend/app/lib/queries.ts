@@ -1,10 +1,17 @@
+import useSWR from "swr";
 import useSWRInfinite from "swr/infinite";
 import { api, unwrap } from "./api";
 
 /**
- * SWR keys + fetchers in one place so `clientLoader` can `preload(...)` the
- * exact key a component later calls `useSWR(...)` with. Keys are arrays; the
+ * SWR keys, fetchers and hooks in one place, so `clientLoader` can
+ * `preload(...)` the exact key a component later reads. Keys are arrays; the
  * first element namespaces the resource.
+ *
+ * The `use*` hooks suspend (suspense is on globally — see entry.client.tsx and
+ * swr.d.ts): each component that calls one sits inside its own
+ * <AsyncBoundary>, so the page shell paints at once and every section fills
+ * in as its own request lands. Several components reading the same key share
+ * one request.
  */
 
 // ---------- taxonomy ----------
@@ -31,6 +38,9 @@ export type Subject = {
 export const subjectsKey = () => ["subjects"] as const;
 export const fetchSubjects = () =>
   api.api.subjects.$get().then((r) => unwrap<Subject[]>(r));
+
+export const useSubjects = () =>
+  useSWR(subjectsKey(), fetchSubjects).data;
 
 // ---------- questions ----------
 
@@ -88,6 +98,9 @@ export const fetchQuestion = (id: number) =>
   api.api.questions[":id"]
     .$get({ param: { id: String(id) } })
     .then((r) => unwrap<QuestionDetail>(r));
+
+export const useQuestion = (id: number) =>
+  useSWR(questionKey(id), () => fetchQuestion(id)).data;
 
 export type QuestionDetail = QuestionRow & {
   lockedAt: string | null;
@@ -188,11 +201,24 @@ export const fetchComments = (id: number) =>
     .$get({ param: { id: String(id) } })
     .then((r) => unwrap<{ comments: CommentRow[] }>(r));
 
+export const useComments = (id: number) =>
+  useSWR(commentsKey(id), () => fetchComments(id)).data.comments;
+
 export const threadKey = (id: number) => ["thread", id] as const;
 export const fetchThread = (id: number) =>
   api.api.questions[":id"].thread
     .$get({ param: { id: String(id) } })
     .then((r) => unwrap<{ messages: ThreadRow[] }>(r));
+
+/** The thread is login-gated, so the key is null for guests. */
+export function useThread(id: number, enabled: boolean): ThreadRow[] {
+  const { data } = useSWR(
+    enabled ? threadKey(id) : null,
+    () => fetchThread(id),
+  );
+  // A null key never suspends and leaves `data` unset, whatever its type says.
+  return (data as { messages: ThreadRow[] } | undefined)?.messages ?? [];
+}
 
 // ---------- notifications ----------
 
@@ -217,11 +243,29 @@ export function fetchNotifications(filters: { type?: string; read?: string }) {
     .then((r) => unwrap<{ items: NotificationRow[] }>(r));
 }
 
+export const useNotifications = (filters: { type?: string; read?: string }) =>
+  useSWR(notificationsKey(filters), () => fetchNotifications(filters))
+    .data.items;
+
 export const unreadKey = () => ["notifications", "unread"] as const;
 export const fetchUnread = () =>
   api.api.me.notifications.unread
     .$get()
     .then((r) => unwrap<{ count: number }>(r));
+
+/**
+ * Header badge. Not suspense — the header must never wait on it. The feed
+ * doesn't say whose question an event concerns, so the count is polled
+ * rather than revalidated on every event for every client.
+ */
+export function useUnreadCount(enabled: boolean): number {
+  const { data } = useSWR(enabled ? unreadKey() : null, fetchUnread, {
+    suspense: false,
+    refreshInterval: 60_000,
+    revalidateOnFocus: true,
+  });
+  return data?.count ?? 0;
+}
 
 // ---------- profiles / stats ----------
 
@@ -236,6 +280,8 @@ export type HomeStats = {
 export const homeStatsKey = () => ["stats", "home"] as const;
 export const fetchHomeStats = () =>
   api.api.stats.home.$get().then((r) => unwrap<HomeStats>(r));
+export const useHomeStats = () =>
+  useSWR(homeStatsKey(), fetchHomeStats).data;
 
 export type SolverDashboard = {
   solved: number;
@@ -255,6 +301,8 @@ export type SolverDashboard = {
 export const dashboardKey = () => ["solver", "dashboard"] as const;
 export const fetchDashboard = () =>
   api.api.me.solver.dashboard.$get().then((r) => unwrap<SolverDashboard>(r));
+export const useDashboard = () =>
+  useSWR(dashboardKey(), fetchDashboard).data;
 
 export type StudentProfile = {
   id: string;
@@ -275,6 +323,8 @@ export const fetchStudentProfile = (id: string) =>
   api.api.students[":id"]
     .$get({ param: { id } })
     .then((r) => unwrap<StudentProfile>(r));
+export const useStudentProfile = (id: string) =>
+  useSWR(studentProfileKey(id), () => fetchStudentProfile(id)).data;
 
 export type SolverProfile = {
   id: string;
@@ -294,6 +344,8 @@ export const fetchSolverProfile = (id: string) =>
   api.api.solvers[":id"]
     .$get({ param: { id } })
     .then((r) => unwrap<SolverProfile>(r));
+export const useSolverProfile = (id: string) =>
+  useSWR(solverProfileKey(id), () => fetchSolverProfile(id)).data;
 
 // The student-facing "my reports" list isn't built yet; its key/fetcher pair
 // went with it rather than sitting here unused. GET /api/me/reports still

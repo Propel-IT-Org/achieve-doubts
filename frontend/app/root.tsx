@@ -8,15 +8,14 @@ import {
   useLocation,
 } from "react-router";
 import { AlertTriangle } from "lucide-react";
-import useSWR from "swr";
 
 import type { Route } from "./+types/root";
 import "./app.css";
 import { BottomNav, Footer, Header } from "./components/shell";
 import { Gate, SvgDefs } from "./components/primitives";
-import { ToastProvider } from "./components/toast";
+import { Toaster } from "./components/toast";
 import { useSession } from "./lib/session";
-import { fetchUnread, unreadKey } from "./lib/queries";
+import { useUnreadCount } from "./lib/queries";
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -45,17 +44,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Unread badge count — only fetched once there's a session to fetch it for. */
-function useUnreadCount() {
-  const { user } = useSession();
-  const { data } = useSWR(user ? unreadKey() : null, fetchUnread, {
-    revalidateOnFocus: false,
-  });
-  return data?.count ?? 0;
-}
-
 export default function App() {
-  const unread = useUnreadCount();
+  const { user } = useSession();
+  const unread = useUnreadCount(Boolean(user));
   const location = useLocation();
 
   // The admin panel is its own shell (dark sidebar, no public header/footer),
@@ -66,9 +57,8 @@ export default function App() {
     return (
       <div className="acs no-bnav" lang="en">
         <SvgDefs />
-        <ToastProvider>
-          <Outlet />
-        </ToastProvider>
+        <Outlet />
+        <Toaster />
       </div>
     );
   }
@@ -76,12 +66,11 @@ export default function App() {
   return (
     <div className="acs has-bnav" lang="en">
       <SvgDefs />
-      <ToastProvider>
-        <Header unread={unread} />
-        <Outlet />
-        <Footer />
-        <BottomNav unread={unread} />
-      </ToastProvider>
+      <Header unread={unread} />
+      <Outlet />
+      <Footer />
+      <BottomNav unread={unread} />
+      <Toaster />
     </div>
   );
 }

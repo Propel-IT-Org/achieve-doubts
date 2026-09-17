@@ -1,92 +1,60 @@
+import type { ReactNode } from "react";
 import { Link } from "react-router";
-import type { QuestionRow, Subject } from "~/lib/queries";
+import type { QuestionRow } from "~/lib/queries";
+import type { TaxonomyLookup } from "~/lib/taxonomy";
 import { ago, shortName } from "~/lib/format";
 import { StatusPill, Trace } from "./primitives";
 
-export type TaxonomyLookup = {
-  subjectName: (id: string) => string;
-  bookName: (id: string) => string;
-  chapterName: (id: number) => string;
-  chapterNumber: (id: number) => number;
+export type QuestionCardViewProps = {
+  to: string;
+  status: string;
+  subjectName: string;
+  bookName: string;
+  chapterNumber: number;
+  chapterName: string;
+  text: string;
+  /** The thumbnail, already rendered — an <img> or the demo's sketch. */
+  photo?: ReactNode;
+  askerName?: string;
+  /** "Rafid H., BUET Mechanical ’24" — name first, credentials after. */
+  solverName?: string;
+  solverCredentials?: string;
+  when: string;
+  commentCount?: number;
+  compact?: boolean;
 };
 
-/**
- * Builds the id -> display-name lookups the cards need, from the taxonomy
- * tree the API returns. Kept outside the card so a list renders one lookup
- * rather than one per row.
- */
-export function buildTaxonomyLookup(subjects: Subject[]): TaxonomyLookup {
-  const subjectNames = new Map<string, string>();
-  const bookNames = new Map<string, string>();
-  const chapterNames = new Map<number, string>();
-  const chapterNumbers = new Map<number, number>();
-
-  for (const subject of subjects) {
-    subjectNames.set(subject.id, subject.nameEn);
-    for (const book of subject.books) {
-      bookNames.set(book.id, book.nameEn);
-      for (const chapter of book.chapters) {
-        chapterNames.set(chapter.id, chapter.nameEn);
-        chapterNumbers.set(chapter.id, chapter.number);
-      }
-    }
-  }
-
-  return {
-    subjectName: (id) => subjectNames.get(id) ?? id,
-    bookName: (id) => bookNames.get(id) ?? id,
-    chapterName: (id) => chapterNames.get(id) ?? "",
-    chapterNumber: (id) => chapterNumbers.get(id) ?? 0,
-  };
-}
-
-export function QuestionCard({
-  question,
-  taxonomy,
-  compact,
-  askerName,
-  solverName,
-  commentCount,
-  statusOverride,
-}: {
-  question: QuestionRow;
-  taxonomy: TaxonomyLookup;
-  compact?: boolean;
-  askerName?: string;
-  solverName?: string;
-  commentCount?: number;
-  statusOverride?: string;
-}) {
-  const status = statusOverride ?? question.status;
-  const chapterNo = taxonomy.chapterNumber(question.chapterId);
+/** The prototype's `.qc` card, fed display values only. */
+export function QuestionCardView(props: QuestionCardViewProps) {
+  const { status } = props;
 
   return (
-    <Link to={`/questions/${question.id}`} className={`qc${compact ? " compact" : ""}`}>
+    <Link to={props.to} className={`qc${props.compact ? " compact" : ""}`}>
       <div className="qc-bar">
         <span className="qc-subj">
-          {taxonomy.subjectName(question.subjectId)}{" "}
-          <span className="qc-book">/ {taxonomy.bookName(question.bookId)}</span>
+          {props.subjectName}{" "}
+          <span className="qc-book">/ {props.bookName}</span>
         </span>
         <StatusPill status={status} />
       </div>
 
       <div className="qc-title">
         <span className="qc-num" aria-hidden="true">
-          {chapterNo}
+          {props.chapterNumber}
         </span>
         <div>
           <span className="qc-chlbl">
-            Chapter<span className="sr"> {chapterNo}</span>
+            Chapter<span className="sr"> {props.chapterNumber}</span>
           </span>
-          <div className="qc-chap">{taxonomy.chapterName(question.chapterId)}</div>
+          <div className="qc-chap">{props.chapterName}</div>
         </div>
       </div>
 
       <div className="qc-body">
-        <p className="qc-q">{question.text}</p>
-        {question.photoUrl && (
+        <p className="qc-q">{props.text}</p>
+        {props.photo && (
           <span className="qc-photo">
-            <img className="qc-thumb" src={question.photoUrl} alt="1 photo" />
+            {props.photo}
             <span className="qc-photo-n" aria-hidden="true">
               1 photo
             </span>
@@ -99,27 +67,84 @@ export function QuestionCard({
       </div>
 
       <div className="qc-foot">
-        {askerName && (
+        {props.askerName && (
           <span>
-            Asked by <b>{shortName(askerName)}</b>
+            Asked by <b>{shortName(props.askerName)}</b>
           </span>
         )}
-        {status !== "waiting" && solverName && (
+        {status !== "waiting" && props.solverName && (
           <span>
-            Solver <b>{shortName(solverName)}</b>
+            Solver <b>{shortName(props.solverName)}</b>
+            {props.solverCredentials && `, ${props.solverCredentials}`}
           </span>
         )}
-        <span>{ago(question.askedAt)}</span>
-        {commentCount !== undefined && (
+        <span>{props.when}</span>
+        {props.commentCount !== undefined && (
           <span>
-            {commentCount === 0
+            {props.commentCount === 0
               ? "No comments yet"
-              : commentCount === 1
+              : props.commentCount === 1
                 ? "1 comment"
-                : `${commentCount} comments`}
+                : `${props.commentCount} comments`}
           </span>
         )}
       </div>
     </Link>
+  );
+}
+
+/** A live question from the API. */
+export function QuestionCard({
+  question,
+  taxonomy,
+  compact,
+}: {
+  question: QuestionRow;
+  taxonomy: TaxonomyLookup;
+  compact?: boolean;
+}) {
+  return (
+    <QuestionCardView
+      to={`/questions/${question.id}`}
+      status={question.status}
+      subjectName={taxonomy.subjectName(question.subjectId)}
+      bookName={taxonomy.bookName(question.bookId)}
+      chapterNumber={taxonomy.chapterNumber(question.chapterId)}
+      chapterName={taxonomy.chapterName(question.chapterId)}
+      text={question.text}
+      photo={
+        question.photoUrl && (
+          <img className="qc-thumb" src={question.photoUrl} alt="1 photo" />
+        )
+      }
+      when={ago(question.askedAt)}
+      compact={compact}
+    />
+  );
+}
+
+/** A grid of question cards, or the given empty state. */
+export function QuestionGrid({
+  questions,
+  taxonomy,
+  empty,
+}: {
+  questions: QuestionRow[];
+  taxonomy: TaxonomyLookup;
+  empty: string;
+}) {
+  if (!questions.length) {
+    return (
+      <div className="empty" style={{ marginTop: 16 }}>
+        <p style={{ margin: 0 }}>{empty}</p>
+      </div>
+    );
+  }
+  return (
+    <div className="cards" style={{ marginTop: 16 }}>
+      {questions.map((q) => (
+        <QuestionCard key={q.id} question={q} taxonomy={taxonomy} compact />
+      ))}
+    </div>
   );
 }

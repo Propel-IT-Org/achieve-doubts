@@ -7,7 +7,7 @@ import { z } from "zod";
 
 import type { Route } from "./+types/login.solver";
 import { signInUsername } from "~/lib/session";
-import { useToast } from "~/components/toast";
+import { toast } from "sonner";
 
 export function meta(_: Route.MetaArgs) {
   return [{ title: "Solver login — Achieve Doubts" }];
@@ -22,7 +22,6 @@ type LoginForm = z.infer<typeof loginSchema>;
 
 export default function SolverLogin() {
   const navigate = useNavigate();
-  const flash = useToast();
   const [error, setError] = useState("");
 
   const {
@@ -44,7 +43,7 @@ export default function SolverLogin() {
       setError(authError.message ?? "That username and password don't match.");
       return;
     }
-    flash("Signed in");
+    toast("Signed in");
     navigate("/solver");
   });
 

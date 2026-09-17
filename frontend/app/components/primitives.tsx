@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Pause, Play } from "lucide-react";
-import { initials } from "~/lib/format";
+import { initials, STATUS_LABEL } from "~/lib/format";
 
 /** Inline SVG defs the prototype references by id (star marker, photo fill). */
 export function SvgDefs() {
@@ -57,19 +57,12 @@ export function Avatar({ name, size = 36 }: { name: string; size?: number }) {
   );
 }
 
-const STATUS_TEXT: Record<string, string> = {
-  waiting: "Open",
-  assigned: "Solver assigned",
-  answered: "Answered",
-  satisfied: "Solved",
-  unsatisfied: "Not satisfied",
-};
 
 export function StatusPill({ status }: { status: string }) {
   return (
     <span className={`pill s-${status}`}>
       <i aria-hidden="true" />
-      {STATUS_TEXT[status] ?? status}
+      {STATUS_LABEL[status] ?? status}
     </span>
   );
 }

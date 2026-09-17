@@ -1,44 +1,19 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { Toaster as SonnerToaster } from "sonner";
 
-type Toast = { msg: string; key: number };
-
-const ToastContext = createContext<(msg: string) => void>(() => {});
-
-/** The prototype's `flash()` — a transient confirmation above the nav bar. */
-export function ToastProvider({ children }: { children: React.ReactNode }) {
-  const [toast, setToast] = useState<Toast | null>(null);
-
-  const flash = useCallback((msg: string) => {
-    setToast({ msg, key: Date.now() });
-  }, []);
-
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 2800);
-    return () => clearTimeout(timer);
-  }, [toast]);
-
-  const value = useMemo(() => flash, [flash]);
-
+/**
+ * Sonner, dressed as the prototype's `flash()`: one navy toast centred above
+ * the bottom nav. Call `toast(...)` / `toast.error(...)` from "sonner"
+ * anywhere. Rendered inside `.acs` so the design tokens resolve.
+ */
+export function Toaster() {
   return (
-    <ToastContext.Provider value={value}>
-      {children}
-      {toast && (
-        <div className="toast" role="status" key={toast.key}>
-          {toast.msg}
-        </div>
-      )}
-    </ToastContext.Provider>
+    <SonnerToaster
+      position="bottom-center"
+      visibleToasts={1}
+      duration={2800}
+      offset={24}
+      mobileOffset={{ bottom: "calc(var(--bnav-h) + var(--safe-b) + 12px)" }}
+      toastOptions={{ unstyled: true, classNames: { toast: "acs-toast" } }}
+    />
   );
-}
-
-export function useToast() {
-  return useContext(ToastContext);
 }
