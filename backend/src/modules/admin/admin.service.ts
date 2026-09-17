@@ -1,4 +1,16 @@
-import { and, desc, eq, gte, ilike, isNull, lte, or, sql } from "drizzle-orm";
+import {
+  type AnyColumn,
+  and,
+  desc,
+  eq,
+  gte,
+  ilike,
+  isNull,
+  lt,
+  lte,
+  or,
+  sql,
+} from "drizzle-orm";
 import type { DB } from "../../db";
 import {
   askQuotaPolicies,
@@ -13,8 +25,26 @@ import {
   user,
 } from "../../db/schema";
 import type { Auth } from "../../lib/auth";
+import type { AppRole } from "../../lib/permissions";
 import { countPendingFollowups } from "../profiles/solver-stats.util";
 import type { CreateSolverInput, QuotaInput, RangeQuery } from "./admin.schema";
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Upper bound of a date range. A bare date means "through the end of that
+ * day": `to=2026-09-30` must include the 30th, but compared as a timestamp it
+ * is midnight at the START of the 30th and silently drops the whole day.
+ * Dates are UTC.
+ */
+function upperBound(column: AnyColumn, to: string) {
+  if (!DATE_ONLY.test(to)) return lte(column, new Date(to));
+  const nextDay = new Date(`${to}T00:00:00Z`);
+  nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+  return lt(column, nextDay);
+}
+
+const batchBanReason = (batchId: string) => `Batch ${batchId} deactivated`;
 
 /** Everything the staff admin panel does. */
 export class AdminService {
@@ -98,13 +128,35 @@ export class AdminService {
    * flag, so existing sessions are revoked and future sign-ins are refused
    * by the framework itself.
    */
-  async setUserActive(
-    userId: string,
-    active: boolean,
-    headers: Headers,
-    actorId: string,
-    reason = "Deactivated by an administrator",
-  ) {
+  async setUserActive({
+    userId,
+    active,
+    expectedRoles,
+    headers,
+    actorId,
+  }: {
+    userId: string;
+    active: boolean;
+    expectedRoles: readonly AppRole[];
+    headers: Headers;
+    actorId: string;
+  }): Promise<{ ok: true } | { error: "not_found" | "self" }> {
+    // Deactivating yourself signs you out mid-task and, for the last staff
+    // account, leaves nobody able to undo it.
+    if (userId === actorId) return { error: "self" };
+
+    const [target] = await this.db
+      .select({ role: user.role })
+      .from(user)
+      .where(eq(user.id, userId));
+
+    // Each route names the kind of account it acts on. Without this check,
+    // /admin/students/:id/active would ban any account at all, staff included.
+    if (!target || !expectedRoles.includes(target.role as AppRole)) {
+      return { error: "not_found" };
+    }
+
+    const reason = "Deactivated by an administrator";
     if (active) {
       await this.auth.api.unbanUser({ body: { userId }, headers });
     } else {
@@ -120,6 +172,7 @@ export class AdminService {
       userId,
       { reason },
     );
+    return { ok: true };
   }
 
   // ---------- solvers ----------
@@ -237,7 +290,18 @@ export class AdminService {
     isAdminSolver: boolean,
     headers: Headers,
     actorId: string,
-  ) {
+  ): Promise<{ ok: true } | { error: "not_found" }> {
+    const [target] = await this.db
+      .select({ role: user.role })
+      .from(user)
+      .where(eq(user.id, userId));
+
+    // Only an existing solver can be promoted or demoted. Without this check
+    // the route would turn a student into an admin solver, or demote staff.
+    if (target?.role !== "solver" && target?.role !== "adminSolver") {
+      return { error: "not_found" };
+    }
+
     await this.auth.api.setRole({
       body: { userId, role: isAdminSolver ? "adminSolver" : "solver" },
       headers,
@@ -248,6 +312,7 @@ export class AdminService {
       "user",
       userId,
     );
+    return { ok: true };
   }
 
   // ---------- batches ----------
@@ -296,12 +361,27 @@ export class AdminService {
     if (!batch) return { error: "Batch not found" as const };
 
     const members = await this.db
-      .select({ userId: studentProfiles.userId })
+      .select({
+        userId: studentProfiles.userId,
+        banned: user.banned,
+        banReason: user.banReason,
+      })
       .from(studentProfiles)
+      .innerJoin(user, eq(user.id, studentProfiles.userId))
       .where(eq(studentProfiles.batchId, batchId));
 
-    const reason = `Batch ${batchId} deactivated`;
-    for (const member of members) {
+    // Touch only the bans this batch owns. Deactivating skips students who
+    // are already banned for another reason — overwriting their ban reason
+    // would let a later reactivation lift a ban staff imposed individually.
+    // Reactivating, likewise, lifts only bans this batch put in place.
+    const reason = batchBanReason(batchId);
+    const affected = members.filter((member) =>
+      active
+        ? member.banned === true && member.banReason === reason
+        : member.banned !== true,
+    );
+
+    for (const member of affected) {
       try {
         if (active) {
           await this.auth.api.unbanUser({
@@ -328,10 +408,10 @@ export class AdminService {
       active ? "batch.activate" : "batch.deactivate",
       "batch",
       batchId,
-      { affectedStudents: members.length },
+      { affectedStudents: affected.length },
     );
 
-    return { batch, affectedStudents: members.length };
+    return { batch, affectedStudents: affected.length };
   }
 
   // ---------- quota ----------
@@ -377,7 +457,7 @@ export class AdminService {
   private rangeFilters(query: RangeQuery) {
     const filters = [isNull(questions.deletedAt)];
     if (query.from) filters.push(gte(questions.askedAt, new Date(query.from)));
-    if (query.to) filters.push(lte(questions.askedAt, new Date(query.to)));
+    if (query.to) filters.push(upperBound(questions.askedAt, query.to));
     if (query.subject) filters.push(eq(questions.subjectId, query.subject));
     if (query.solver) filters.push(eq(questions.solverId, query.solver));
     return filters;
@@ -506,7 +586,6 @@ export class AdminService {
   /** Live figures for a range — the preview before a snapshot is taken. */
   async payoutPreview(from: string, to: string) {
     const fromDate = new Date(from);
-    const toDate = new Date(to);
 
     const rows = await this.db
       .select({
@@ -527,7 +606,7 @@ export class AdminService {
         and(
           isNull(questions.deletedAt),
           gte(questions.answeredAt, fromDate),
-          lte(questions.answeredAt, toDate),
+          upperBound(questions.answeredAt, to),
           sql`${questions.solverId} is not null`,
         ),
       )

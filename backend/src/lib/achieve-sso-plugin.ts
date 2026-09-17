@@ -1,4 +1,3 @@
-import { createHash, timingSafeEqual } from "node:crypto";
 import type { BetterAuthPlugin } from "better-auth";
 import { APIError, createAuthEndpoint } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
@@ -33,22 +32,22 @@ export function normalizePayload(raw: Record<string, unknown>) {
 }
 
 /** sha256-then-timingSafeEqual avoids both the length mismatch that makes
- * node's timingSafeEqual throw on unequal-length input, and a naive `!==`
- * comparison's early-exit timing leak. */
+ * timingSafeEqual throw on unequal-length input, and a naive `!==`
+ * comparison's early-exit timing leak. Bun-native: no node:crypto import. */
 export function constantTimeEqual(a: string, b: string): boolean {
-  const digestA = createHash("sha256").update(a).digest();
-  const digestB = createHash("sha256").update(b).digest();
-  return timingSafeEqual(digestA, digestB);
+  return crypto.timingSafeEqual(
+    Bun.CryptoHasher.hash("sha256", a),
+    Bun.CryptoHasher.hash("sha256", b),
+  );
 }
 
 export function randomToken(): string {
-  const bytes = new Uint8Array(32); // 256 bits — doc requires >=128
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  // 256 bits — the integration spec requires at least 128.
+  return crypto.getRandomValues(new Uint8Array(32)).toHex();
 }
 
 export function hashToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
+  return Bun.CryptoHasher.hash("sha256", token, "hex");
 }
 
 function errorBody(errorCode: string, message: string) {
@@ -245,14 +244,18 @@ export function achieveSsoPlugin(): BetterAuthPlugin {
               await ctx.context.adapter.update({
                 model: "studentProfiles",
                 where: [{ field: "userId", value: userId }],
-                update: { phone, institution, batchId },
+                // The field has no automatic update hook, so stamp it here.
+                update: { phone, institution, batchId, updatedAt: new Date() },
               });
             } else {
-              const conflictingUser =
+              const found =
                 await ctx.context.internalAdapter.findUserByEmail(
                   normalizedEmail,
                 );
-              if (conflictingUser) {
+              const foundRole = (found?.user as { role?: string | null } | undefined)
+                ?.role;
+
+              if (found && foundRole !== "student") {
                 // This email already belongs to a non-student account (e.g.
                 // a solver/staff login) — refuse rather than silently
                 // attaching a student profile to someone else's account.
@@ -265,17 +268,32 @@ export function achieveSsoPlugin(): BetterAuthPlugin {
                 );
               }
 
-              const created = await ctx.context.internalAdapter.createUser(
-                {
-                  name,
-                  email: normalizedEmail,
-                  emailVerified: true,
-                  role: "student",
-                },
-                { method: "achieve-sso" },
-              );
-              userId = created.id;
-              userStatus = "new";
+              if (found) {
+                // A student account with no profile: an earlier handshake
+                // created the user, then failed before writing its profile.
+                // Refusing here would lock that student out for good, since
+                // every retry lands in this branch — adopt the account.
+                userId = found.user.id;
+                userStatus = "existing";
+                await ctx.context.adapter.update({
+                  model: "user",
+                  where: [{ field: "id", value: userId }],
+                  update: { name },
+                });
+              } else {
+                const created = await ctx.context.internalAdapter.createUser(
+                  {
+                    name,
+                    email: normalizedEmail,
+                    emailVerified: true,
+                    role: "student",
+                  },
+                  { method: "achieve-sso" },
+                );
+                userId = created.id;
+                userStatus = "new";
+              }
+
               await ctx.context.adapter.create({
                 model: "studentProfiles",
                 data: {
@@ -379,9 +397,20 @@ export function achieveSsoPlugin(): BetterAuthPlugin {
           // dontRememberMe defaults to false/undefined here, i.e. a normal
           // persistent session — not the `createSession(userId, ctx)`
           // mistake that would have passed a truthy second argument.
-          const session = await ctx.context.internalAdapter.createSession(
-            foundUser.id,
-          );
+          const session = await ctx.context.internalAdapter
+            .createSession(foundUser.id)
+            .catch((err: unknown) => {
+              // better-auth's admin plugin refuses sessions for banned users
+              // — that is how a deactivated batch keeps its students out.
+              // This is a page navigation, so send the student back to the
+              // site with a reason instead of a raw JSON 403.
+              if (err instanceof APIError && err.statusCode === 403) {
+                throw ctx.redirect(
+                  `${env.CORS_ORIGIN}/?ssoError=account_disabled`,
+                );
+              }
+              throw err;
+            });
           await setSessionCookie(ctx, { session, user: foundUser });
 
           throw ctx.redirect(`${env.CORS_ORIGIN}/`);

@@ -1,6 +1,7 @@
 import useSWRMutation from "swr/mutation";
 import { mutate } from "swr";
 import { api, unwrap } from "./api";
+import { compressImage } from "./image";
 import {
   unreadKey,
   type CommentRow,
@@ -254,26 +255,15 @@ export function useMarkAllNotificationsRead() {
 // ---------- uploads ----------
 
 /**
- * Presign then PUT straight to storage. The API only ever hands back a URL
- * for an allow-listed content type, and the create endpoints re-check that
- * the URL came from this flow before persisting it.
+ * Uploads a file and returns its public URL.
+ *
+ * Images are compressed in the browser first, which is what saves students'
+ * mobile data. The API still decodes and normalises every upload, so the
+ * server — not this function — decides what gets stored.
  */
 export async function uploadFile(file: File): Promise<string> {
-  const res = await api.api.upload.presign.$post({
-    json: { fileName: file.name, contentType: file.type as never },
-  });
-  const { uploadUrl, publicUrl } = await unwrap<{
-    uploadUrl: string;
-    publicUrl: string;
-    key: string;
-  }>(res);
-
-  const put = await fetch(uploadUrl, {
-    method: "PUT",
-    body: file,
-    headers: { "content-type": file.type },
-  });
-  if (!put.ok) throw new Error("Upload failed");
-
-  return publicUrl;
+  const body = file.type.startsWith("image/") ? await compressImage(file) : file;
+  const res = await api.api.upload.$post({ form: { file: body } });
+  const { url } = await unwrap<{ url: string }>(res);
+  return url;
 }

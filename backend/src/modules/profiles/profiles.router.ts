@@ -1,7 +1,9 @@
-import { fail } from "../../lib/errors";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
+import type { DB } from "../../db";
+import { cached } from "../../lib/cache";
 import type { AppEnv } from "../../lib/di";
+import { fail } from "../../lib/errors";
 import {
   lockEvents,
   questions,
@@ -186,7 +188,18 @@ export const profilesRouter = new Hono<AppEnv>()
   )
   .get("/stats/home", async (c) => {
     const db = c.var.di.get("db");
+    // Public, fetched on every home page view, and three aggregate scans over
+    // whole tables — nobody needs these figures to the second.
+    const stats = await cached("cache:stats:home", HOME_STATS_TTL, () =>
+      computeHomeStats(db),
+    );
+    c.header("Cache-Control", `public, max-age=${HOME_STATS_TTL}`);
+    return c.json(stats);
+  });
 
+const HOME_STATS_TTL = 60;
+
+async function computeHomeStats(db: DB) {
     const [agg] = await db
       .select({
         solved: sql<number>`count(*) filter (where ${questions.status} in ('answered','satisfied','unsatisfied'))`,
@@ -226,7 +239,7 @@ export const profilesRouter = new Hono<AppEnv>()
     const satisfied = Number(agg?.satisfied ?? 0);
     const unsatisfied = Number(agg?.unsatisfied ?? 0);
 
-    return c.json({
+    return {
       solved: Number(agg?.solved ?? 0),
       satisfactionRate:
         satisfied + unsatisfied > 0
@@ -239,5 +252,5 @@ export const profilesRouter = new Hono<AppEnv>()
         ? Number(answerTime.medianAnswerMin)
         : null,
       solversAvailable: Number(solverCount?.n ?? 0),
-    });
-  });
+    };
+}

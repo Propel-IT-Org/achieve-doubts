@@ -79,14 +79,18 @@ export const adminRouter = new Hono<AppEnv>()
     zValidator("json", activeBodySchema, zodErrorHook),
     async (c) => {
       const { active } = c.req.valid("json");
-      await c.var.di
-        .get("admin")
-        .setUserActive(
-          c.req.param("id"),
-          active,
-          c.req.raw.headers,
-          c.var.user.id,
-        );
+      const result = await c.var.di.get("admin").setUserActive({
+        userId: c.req.param("id"),
+        active,
+        expectedRoles: ["student"],
+        headers: c.req.raw.headers,
+        actorId: c.var.user.id,
+      });
+      if ("error" in result) {
+        return result.error === "self"
+          ? fail(c, 409, "CONFLICT", "You can't change your own account's status")
+          : fail(c, 404, "NOT_FOUND", "Student not found");
+      }
       return c.json({ ok: true, active });
     },
   )
@@ -120,14 +124,18 @@ export const adminRouter = new Hono<AppEnv>()
     zValidator("json", activeBodySchema, zodErrorHook),
     async (c) => {
       const { active } = c.req.valid("json");
-      await c.var.di
-        .get("admin")
-        .setUserActive(
-          c.req.param("id"),
-          active,
-          c.req.raw.headers,
-          c.var.user.id,
-        );
+      const result = await c.var.di.get("admin").setUserActive({
+        userId: c.req.param("id"),
+        active,
+        expectedRoles: ["solver", "adminSolver"],
+        headers: c.req.raw.headers,
+        actorId: c.var.user.id,
+      });
+      if ("error" in result) {
+        return result.error === "self"
+          ? fail(c, 409, "CONFLICT", "You can't change your own account's status")
+          : fail(c, 404, "NOT_FOUND", "Solver not found");
+      }
       return c.json({ ok: true, active });
     },
   )
@@ -138,7 +146,7 @@ export const adminRouter = new Hono<AppEnv>()
     zValidator("json", solverAdminFlagSchema, zodErrorHook),
     async (c) => {
       const { isAdminSolver } = c.req.valid("json");
-      await c.var.di
+      const result = await c.var.di
         .get("admin")
         .setSolverAdmin(
           c.req.param("id"),
@@ -146,6 +154,9 @@ export const adminRouter = new Hono<AppEnv>()
           c.req.raw.headers,
           c.var.user.id,
         );
+      if ("error" in result) {
+        return fail(c, 404, "NOT_FOUND", "Solver not found");
+      }
       return c.json({ ok: true, isAdminSolver });
     },
   )

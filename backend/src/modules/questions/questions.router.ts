@@ -60,6 +60,14 @@ export const questionsRouter = new Hono<AppEnv>()
         .createQuestion(c.var.user.id, input);
 
       if (!result.ok) {
+        if (result.reason === "taxonomy") {
+          return fail(
+            c,
+            400,
+            "VALIDATION_FAILED",
+            "That chapter doesn't belong to the selected book and subject",
+          );
+        }
         const message =
           result.reason === "daily"
             ? "Daily question limit reached"

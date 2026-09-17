@@ -1,4 +1,5 @@
 import { inferdiHono } from "@inferdi/hono";
+import { APIError } from "better-auth/api";
 import { Hono } from "hono";
 import type { BunWebSocketData } from "hono/bun";
 import { bodyLimit } from "hono/body-limit";
@@ -9,11 +10,12 @@ import { requestId } from "hono/request-id";
 import { secureHeaders } from "hono/secure-headers";
 import { env } from "./env";
 import { startLockSweeper } from "./jobs/lock-sweeper";
-import { type ApiErrorBody, toErrorBody } from "./lib/errors";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
+import { type ApiErrorBody, codeForStatus, toErrorBody } from "./lib/errors";
 import { type AppContainer, type AppEnv, container } from "./lib/di";
 import { isDraining } from "./lib/lifecycle";
 import { requireAuth, requirePermission } from "./middleware/auth";
-import { createRateLimiter } from "./middleware/rate-limit";
+import { createRateLimiter, sessionOrIpKey } from "./middleware/rate-limit";
 import { adminRouter } from "./modules/admin/admin.router";
 import { authRouter } from "./modules/auth/auth.router";
 import { commentsRouter } from "./modules/interaction/comments.router";
@@ -33,11 +35,10 @@ export function createApp(customContainer: AppContainer = container) {
   app.use("*", requestId());
   app.use("*", logger());
   app.use("*", secureHeaders());
-  app.use(
-    "*",
-    bodyLimit({
-      // Uploads go through presigned URLs, not this API — 5MB comfortably
-      // covers JSON payloads for every route we serve directly.
+  // Every route except the upload endpoint only ever receives JSON, for which
+  // 5 MB is generous. The upload route sets its own, file-sized limit
+  // (upload.router.ts), so it is skipped here.
+  const jsonBodyLimit = bodyLimit({
       maxSize: 5 * 1024 * 1024,
       onError: (c) =>
         c.json(
@@ -47,7 +48,9 @@ export function createApp(customContainer: AppContainer = container) {
           } satisfies ApiErrorBody,
           413,
         ),
-    }),
+  });
+  app.use("*", (c, next) =>
+    c.req.path === "/api/upload" ? next() : jsonBodyLimit(c, next),
   );
   app.use(
     "*",
@@ -55,8 +58,11 @@ export function createApp(customContainer: AppContainer = container) {
       origin: [
         env.CORS_ORIGIN,
         env.ADMIN_ORIGIN,
-        "http://localhost:5173",
-        "http://localhost:3000",
+        // Local dev servers only. In production these would let any page a
+        // user happens to run on localhost make credentialed API calls.
+        ...(env.NODE_ENV === "production"
+          ? []
+          : ["http://localhost:5173", "http://localhost:3000"]),
       ],
       credentials: true,
       allowHeaders: [
@@ -71,9 +77,36 @@ export function createApp(customContainer: AppContainer = container) {
     }),
   );
 
-  // Coarse defense-in-depth for the whole API. Individual sensitive routes
-  // (e.g. the Achieve integration handshake) layer a stricter limiter on top.
-  app.use("/api/*", createRateLimiter({ windowMs: 60_000, max: 300 }));
+  // Two tiers. Students on mobile carriers share addresses behind CGNAT, so a
+  // per-IP limit alone would throttle whole neighbourhoods at once: signed-in
+  // traffic is limited per session instead, and the per-IP ceiling is far
+  // higher, catching only floods (including clients that rotate fake session
+  // cookies to dodge tier two).
+  //
+  // The Achieve handshake is exempt from both. Every student's login arrives
+  // from Achieve's few server addresses, so these limits would cap the whole
+  // platform's logins; auth.router.ts gives it its own limiter.
+  const skipAchieveHandshake = (c: { req: { path: string } }) =>
+    c.req.path.startsWith("/api/auth/achieve/sessions/");
+  app.use(
+    "/api/*",
+    createRateLimiter({
+      prefix: "rl:ip",
+      windowMs: 60_000,
+      max: 3_000,
+      skip: skipAchieveHandshake,
+    }),
+  );
+  app.use(
+    "/api/*",
+    createRateLimiter({
+      prefix: "rl:client",
+      windowMs: 60_000,
+      max: 300,
+      keyFn: sessionOrIpKey,
+      skip: skipAchieveHandshake,
+    }),
+  );
 
   app.use(
     "*",
@@ -102,6 +135,22 @@ export function createApp(customContainer: AppContainer = container) {
     if (err instanceof HTTPException && err.res) return err.res;
 
     const requestId = c.get("requestId");
+
+    // better-auth's own errors (banUser on a missing user, a refused
+    // setRole, ...) carry a real status. Without this they'd fall through to
+    // the generic branch below and surface as a 500.
+    if (err instanceof APIError && err.statusCode >= 400) {
+      const status = err.statusCode as ContentfulStatusCode;
+      return c.json(
+        {
+          error: String(err.body?.message ?? err.message),
+          code: codeForStatus(status),
+          requestId,
+        } satisfies ApiErrorBody,
+        status,
+      );
+    }
+
     const body = toErrorBody(err, requestId);
 
     // 5xx means we did something wrong: log it with the request id so a

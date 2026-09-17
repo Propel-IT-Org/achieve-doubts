@@ -37,14 +37,20 @@ describe("Better-Auth Test Utils - Integration Tests", () => {
 		expect(headers.get("cookie")).toBeDefined();
 
 		const client = createTestClient({ auth });
-		const presignRes = await client.api.upload.presign.$post(
-			{ json: { fileName: "graph.png", contentType: "image/png" } },
+		const png = Uint8Array.fromBase64(
+			"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+		);
+		const uploadRes = await client.api.upload.$post(
+			{ form: { file: new File([png], "graph.png", { type: "image/png" }) } },
 			{ headers: { cookie: headers.get("cookie") as string } },
 		);
 
-		expect(presignRes.status).toBe(200);
-		const data = (await presignRes.json()) as { uploadUrl: string };
-		expect(data.uploadUrl).toBeDefined();
+		expect(uploadRes.status).toBe(201);
+		const data = (await uploadRes.json()) as { url: string; key: string };
+		expect(data.url).toBeDefined();
+		await Bun.file(`${process.cwd()}/.uploads/${data.key}`)
+			.delete()
+			.catch(() => {});
 
 		await test.deleteUser(student.id);
 	});

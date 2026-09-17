@@ -28,7 +28,8 @@ export const reportsRouter = new Hono<AppEnv>()
 
       if ("error" in result) {
         // The service picks the status (404 unknown question, 403 not the
-        // asker, 409 already reported), so the code follows from it.
+        // asker, 400 not solved yet, 409 already reported), so the code
+        // follows from it.
         const status = result.status ?? 400;
         return fail(
           c,

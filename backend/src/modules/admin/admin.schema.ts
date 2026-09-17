@@ -31,22 +31,42 @@ export const quotaSchema = z.object({
   maxPerMonth: z.number().int().positive().nullable(),
 });
 
-export const rangeQuerySchema = z.object({
-  from: z.string().optional(),
-  to: z.string().optional(),
+/**
+ * A calendar date (`2026-09-30`, meaning that whole day) or a full ISO
+ * timestamp. Free text used to reach `new Date()` unchecked and surface as a
+ * 500 from Postgres.
+ */
+const dateBound = z.union([z.iso.date(), z.iso.datetime({ offset: true })]);
+
+const inOrder = (value: { from?: string; to?: string }) =>
+  !value.from || !value.to || new Date(value.from) <= new Date(value.to);
+const orderMessage = { message: "`from` must not be after `to`", path: ["to"] };
+
+const rangeFields = {
+  from: dateBound.optional(),
+  to: dateBound.optional(),
   subject: z.string().optional(),
   solver: z.string().optional(),
-});
+};
 
-export const rankingsQuerySchema = rangeQuerySchema.extend({
-  minAnswered: z.coerce.number().int().min(1).default(20),
-});
+// Built from shared fields rather than `.extend()`: zod 4 refuses to extend
+// an object schema that already carries a refinement.
+export const rangeQuerySchema = z.object(rangeFields).refine(inOrder, orderMessage);
 
-export const payoutSnapshotSchema = z.object({
-  from: z.string(),
-  to: z.string(),
-  note: z.string().optional(),
-});
+export const rankingsQuerySchema = z
+  .object({
+    ...rangeFields,
+    minAnswered: z.coerce.number().int().min(1).default(20),
+  })
+  .refine(inOrder, orderMessage);
+
+export const payoutSnapshotSchema = z
+  .object({
+    from: dateBound,
+    to: dateBound,
+    note: z.string().max(500).optional(),
+  })
+  .refine(inOrder, orderMessage);
 
 export type CreateSolverInput = z.infer<typeof createSolverSchema>;
 export type QuotaInput = z.infer<typeof quotaSchema>;

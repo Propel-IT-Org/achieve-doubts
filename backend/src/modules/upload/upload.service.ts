@@ -1,65 +1,69 @@
-﻿import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { type BunFile, S3Client } from "bun";
 import { env } from "../../env";
+import type { ProcessedMedia } from "./upload.media";
+import {
+  LOCAL_UPLOAD_DIR,
+  LOCAL_UPLOAD_ROUTE,
+  UPLOAD_KEY_PATTERN,
+} from "./upload.util";
 
+/**
+ * Stores processed media. Uses Bun's built-in S3 client for R2 or B2 when
+ * configured, and the local filesystem otherwise (development only — env.ts
+ * refuses to boot in production without S3).
+ *
+ * Uploads come through the API rather than straight to the bucket, so the
+ * server decodes and normalises every file before it is stored (see
+ * upload.media.ts). That leaves nothing to trust in a client-held URL, and
+ * removes the AWS SDK entirely.
+ */
 export class UploadService {
-	private s3Client: S3Client | null;
+  private s3: S3Client | null;
 
-	constructor() {
-		const hasS3Config = Boolean(
-			env.S3_ENDPOINT && env.S3_ACCESS_KEY_ID && env.S3_SECRET_ACCESS_KEY,
-		);
-		this.s3Client = hasS3Config
-			? new S3Client({
-					region: env.S3_REGION,
-					// Since @aws-sdk/client-s3 3.729 the SDK adds CRC32 checksum
-					// parameters to presigned URLs by default. The browser's PUT
-					// never sends a matching checksum, so R2 and B2 reject the
-					// upload. Only compute checksums where an operation requires one.
-					requestChecksumCalculation: "WHEN_REQUIRED",
-					responseChecksumValidation: "WHEN_REQUIRED",
-					endpoint: env.S3_ENDPOINT,
-					credentials: {
-						accessKeyId: env.S3_ACCESS_KEY_ID!,
-						secretAccessKey: env.S3_SECRET_ACCESS_KEY!,
-					},
-				})
-			: null;
-	}
+  constructor() {
+    const configured = Boolean(
+      env.S3_ENDPOINT && env.S3_ACCESS_KEY_ID && env.S3_SECRET_ACCESS_KEY,
+    );
+    this.s3 = configured
+      ? new S3Client({
+          endpoint: env.S3_ENDPOINT,
+          region: env.S3_REGION,
+          bucket: env.S3_BUCKET_NAME,
+          accessKeyId: env.S3_ACCESS_KEY_ID,
+          secretAccessKey: env.S3_SECRET_ACCESS_KEY,
+        })
+      : null;
+  }
 
-	async createPresignedUpload(
-		fileName: string,
-		contentType: string,
-		userId: string,
-		expiresInSeconds = 300,
-	) {
-		const ext = fileName.split(".").pop() || "bin";
-		const key = `uploads/${userId}/${Date.now()}-${crypto.randomUUID()}.${ext}`;
+  get isConfigured(): boolean {
+    return this.s3 !== null;
+  }
 
-		if (!this.s3Client) {
-			const publicUrl = `${env.S3_PUBLIC_URL}/${key}`;
-			return {
-				uploadUrl: `${env.BETTER_AUTH_URL}/api/upload/mock?key=${encodeURIComponent(key)}`,
-				publicUrl,
-				key,
-			};
-		}
+  async store(userId: string, media: ProcessedMedia) {
+    // The extension comes from the processed type, never from the client.
+    const key = `uploads/${userId}/${Date.now()}-${crypto.randomUUID()}.${media.extension}`;
 
-		const command = new PutObjectCommand({
-			Bucket: env.S3_BUCKET_NAME,
-			Key: key,
-			ContentType: contentType,
-		});
+    if (this.s3) {
+      await this.s3.write(key, media.bytes, { type: media.contentType });
+      const base = env.S3_PUBLIC_URL.replace(/\/+$/, "");
+      return { key, url: `${base}/${key}` };
+    }
 
-		const uploadUrl = await getSignedUrl(this.s3Client, command, {
-			expiresIn: expiresInSeconds,
-		});
-		const publicUrl = `${env.S3_PUBLIC_URL}/${key}`;
+    await Bun.write(this.localPath(key), media.bytes);
+    const base = env.BETTER_AUTH_URL.replace(/\/+$/, "");
+    return { key, url: `${base}${LOCAL_UPLOAD_ROUTE}/${key}` };
+  }
 
-		return {
-			uploadUrl,
-			publicUrl,
-			key,
-		};
-	}
+  /**
+   * Development only. Returns null for any key the service could not have
+   * produced, so a crafted path can never escape the upload directory.
+   */
+  readLocal(key: string): BunFile | null {
+    if (!UPLOAD_KEY_PATTERN.test(key)) return null;
+    return Bun.file(this.localPath(key));
+  }
+
+  private localPath(key: string): string {
+    return `${process.cwd()}/${LOCAL_UPLOAD_DIR}/${key}`;
+  }
 }

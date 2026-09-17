@@ -36,6 +36,23 @@ export class ReportsService {
       };
     }
 
+    // One open report per student per question: repeats add nothing for the
+    // admins and are an easy way to flood their queue.
+    const alreadyOpen = await this.db.query.reports.findFirst({
+      where: and(
+        eq(reports.questionId, questionId),
+        eq(reports.reporterId, reporterId),
+        eq(reports.status, "open"),
+      ),
+      columns: { id: true },
+    });
+    if (alreadyOpen) {
+      return {
+        error: "You already have an open report for this question" as const,
+        status: 409 as const,
+      };
+    }
+
     const [row] = await this.db
       .insert(reports)
       .values({ questionId, reporterId, reason, text, status: "open" })

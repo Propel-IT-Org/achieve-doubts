@@ -37,7 +37,7 @@ export class CommentsService {
       .select()
       .from(questions)
       .where(eq(questions.id, questionId));
-    if (!question) return { error: "not_found" as const };
+    if (!question || question.deletedAt) return { error: "not_found" as const };
 
     const [row] = await this.db
       .insert(comments)

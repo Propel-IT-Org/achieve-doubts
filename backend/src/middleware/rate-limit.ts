@@ -20,9 +20,30 @@ interface RateLimitOptions {
 	onLimited?: (c: Context) => Response | Promise<Response>;
 	/** Distinguishes limiters that would otherwise share a key space. */
 	prefix?: string;
+	/** Requests this returns true for are not counted at all. */
+	skip?: (c: Context) => boolean;
 }
 
 const defaultKeyFn = (c: Context) => clientIpFromHeaders(c.req.raw.headers);
+
+const SESSION_COOKIE =
+	/(?:^|;\s*)(?:__Secure-)?better-auth\.session_token=([^;]+)/;
+
+/**
+ * Keys signed-in traffic by session and anonymous traffic by IP.
+ *
+ * Mobile carriers put many users behind one address (CGNAT), so a per-IP key
+ * alone throttles everyone sharing it at once. The cookie is not verified
+ * here — a forged one only earns its own bucket, which is why this limiter is
+ * always paired with a much higher per-IP ceiling.
+ */
+export function sessionOrIpKey(c: Context): string {
+	const token = c.req.header("cookie")?.match(SESSION_COOKIE)?.[1];
+	// Hashed: a raw session token must never become a Redis key name.
+	return token
+		? `s:${Bun.CryptoHasher.hash("sha256", token, "hex")}`
+		: `ip:${clientIpFromHeaders(c.req.raw.headers)}`;
+}
 
 /**
  * Fixed-window rate limiter, backed by Redis when REDIS_URL is set and by an
@@ -42,6 +63,7 @@ export function createRateLimiter({
 	keyFn = defaultKeyFn,
 	onLimited,
 	prefix = "rl",
+	skip,
 }: RateLimitOptions) {
 	const buckets = new Map<string, Bucket>();
 
@@ -91,6 +113,7 @@ export function createRateLimiter({
 	}
 
 	return createMiddleware(async (c, next) => {
+		if (skip?.(c)) return next();
 		if (await isLimited(keyFn(c))) {
 			if (onLimited) return await onLimited(c);
 			throw new AppError(429, "RATE_LIMITED", "Too many requests");

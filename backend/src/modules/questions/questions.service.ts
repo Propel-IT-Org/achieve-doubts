@@ -15,13 +15,15 @@ import type { DB } from "../../db";
 import {
   askQuotaPolicies,
   auditLog,
+  books,
+  chapters,
   lockEvents,
   notifications,
   questions,
-  solutions,
   threadMessages,
 } from "../../db/schema";
 import { env } from "../../env";
+import { pendingFollowupsWhere } from "../profiles/solver-stats.util";
 import type {
   CreateQuestionInput,
   CursorPayload,
@@ -36,10 +38,14 @@ export type Question = typeof questions.$inferSelect;
 // until they clear the backlog.
 export const FOLLOWUP_BLOCK_THRESHOLD = 3;
 
+// Cursors are base64url, not base64: plain base64's `+` and `/` turn into a
+// space and a path separator in a hand-built query string, and a mangled
+// cursor silently restarts the list from the first page.
 function decodeCursor(raw?: string): CursorPayload | null {
   if (!raw) return null;
   try {
-    const json = JSON.parse(Buffer.from(raw, "base64").toString("utf-8"));
+    const bytes = Uint8Array.fromBase64(raw, { alphabet: "base64url" });
+    const json = JSON.parse(new TextDecoder().decode(bytes));
     const parsed = cursorPayloadSchema.safeParse(json);
     return parsed.success ? parsed.data : null;
   } catch {
@@ -48,7 +54,9 @@ function decodeCursor(raw?: string): CursorPayload | null {
 }
 
 function encodeCursor(payload: CursorPayload): string {
-  return Buffer.from(JSON.stringify(payload)).toString("base64");
+  return new TextEncoder()
+    .encode(JSON.stringify(payload))
+    .toBase64({ alphabet: "base64url", omitPadding: true });
 }
 
 export type LockResult =
@@ -64,7 +72,7 @@ export type OverrideResult =
 
 export type CreateResult =
   | { ok: true; question: Question }
-  | { ok: false; reason: "daily" | "monthly" };
+  | { ok: false; reason: "daily" | "monthly" | "taxonomy" };
 
 export class QuestionsService {
   constructor(private db: DB) {}
@@ -154,7 +162,13 @@ export class QuestionsService {
       return rest;
     }
 
-    return question;
+    // A `one()` relation can't be filtered in the query, so a removed
+    // solution would otherwise still be returned — text and all.
+    const solution =
+      question.solution && !question.solution.deletedAt
+        ? question.solution
+        : null;
+    return { ...question, solution };
   }
 
   async countOpenQuestions(): Promise<number> {
@@ -186,6 +200,24 @@ export class QuestionsService {
     askerId: string,
     input: CreateQuestionInput,
   ): Promise<CreateResult> {
+    // The three ids arrive independently, and the foreign keys only prove
+    // each one exists — not that the chapter belongs to that book, or the
+    // book to that subject. A mismatched question would vanish from every
+    // correctly filtered list.
+    const [placement] = await this.db
+      .select({ id: chapters.id })
+      .from(chapters)
+      .innerJoin(books, eq(books.id, chapters.bookId))
+      .where(
+        and(
+          eq(chapters.id, input.chapterId),
+          eq(books.id, input.bookId),
+          eq(books.subjectId, input.subjectId),
+        ),
+      )
+      .limit(1);
+    if (!placement) return { ok: false, reason: "taxonomy" };
+
     const policy = await this.db.query.askQuotaPolicies.findFirst({
       where: and(
         eq(askQuotaPolicies.scope, "global"),
@@ -229,45 +261,6 @@ export class QuestionsService {
     return { ok: true, question: created };
   }
 
-  /**
-   * Counts the solver's open follow-ups.
-   *
-   * Being inside the transaction is NOT by itself enough to serialize this
-   * against the claim: under READ COMMITTED a plain count doesn't block a
-   * concurrent writer, so two parallel lock attempts by the same solver could
-   * both read a count below the threshold and both proceed. lockQuestion
-   * takes a per-solver advisory lock to close that window.
-   *
-   * A correlated raw-SQL count expresses "the latest non-deleted thread
-   * message is from the asker" most directly.
-   */
-  private async countBlockingFollowups(
-    executor: DB,
-    solverId: string,
-  ): Promise<number> {
-    const rows = await executor.execute(sql`
-      select count(*)::int as count
-      from ${questions}
-      where ${questions.solverId} = ${solverId}
-        and ${questions.status} != 'satisfied'
-        and ${questions.deletedAt} is null
-        and exists (
-          select 1 from ${solutions}
-          where ${solutions.questionId} = ${questions.id}
-            and ${solutions.deletedAt} is null
-        )
-        and (
-          select ${threadMessages.authorSide} from ${threadMessages}
-          where ${threadMessages.questionId} = ${questions.id}
-            and ${threadMessages.deletedAt} is null
-          order by ${threadMessages.createdAt} desc
-          limit 1
-        ) = 'asker'
-    `);
-    const list = rows as unknown as Array<{ count: number | string }>;
-    return Number(list[0]?.count ?? 0);
-  }
-
   async lockQuestion(questionId: number, solverId: string): Promise<LockResult> {
     return this.db.transaction(async (tx) => {
       // Serializes concurrent lock attempts *by this solver* for the duration
@@ -275,13 +268,17 @@ export class QuestionsService {
       // raced. Keyed on the solver, so it never blocks a different solver —
       // the contention that matters (two solvers racing for one question) is
       // still resolved by the atomic UPDATE, not by this lock.
+      // (A plain count inside the transaction would not be enough on its own:
+      // under READ COMMITTED it doesn't block a concurrent writer.)
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${solverId}))`);
 
-      const blocking = await this.countBlockingFollowups(
-        tx as unknown as DB,
-        solverId,
-      );
-      if (blocking >= FOLLOWUP_BLOCK_THRESHOLD) {
+      // The same predicate the dashboard lists, so "blocked" and "what's
+      // blocking you" can never disagree.
+      const [blocking] = await tx
+        .select({ n: count() })
+        .from(questions)
+        .where(pendingFollowupsWhere(solverId));
+      if ((blocking?.n ?? 0) >= FOLLOWUP_BLOCK_THRESHOLD) {
         return { ok: false, reason: "followup_block" };
       }
 
