@@ -1,53 +1,81 @@
-# Production stack for a single VPS (netcup VPS 1000 G12: 4 vCore / 8 GB).
+# Production backend stack for a single VPS (Contabo).
 #
-# Everything terminates at Traefik; only 80/443 are published. Postgres has no
-# published ports at all — it is reachable only on the internal network.
+# The frontend is NOT here — it is a static build on Cloudflare Pages. This
+# file runs: Traefik, the API (any number of replicas), Postgres, Redis, and a
+# daily Postgres backup to S3-compatible storage.
 #
-# Required .env at this directory (compose loads it automatically):
-#   DOMAIN=doubts.example.com
-#   ACME_EMAIL=ops@example.com
+# Two ways to put the API on the internet — pick one:
+#
+#   A) Cloudflare Tunnel (recommended). No inbound ports at all; the VPS
+#      firewall can close 80/443 entirely.
+#        docker compose --profile tunnel up -d
+#      In the Cloudflare dashboard, route the public hostname api.$DOMAIN to
+#      http://traefik:80. Keep CLIENT_IP_SOURCE=cloudflare.
+#
+#   B) Direct DNS (A record -> VPS IP, DNS-only / grey cloud). Traefik
+#      terminates TLS with Let's Encrypt:
+#        docker compose -f compose.yml -f compose.direct.yml up -d
+#
+# Scale the API (Traefik load-balances every replica automatically):
+#   docker compose --profile tunnel up -d --scale api=3
+#
+# Migrations run from the api image, never at boot:
+#   docker compose run --rm api bun run --cwd backend db:migrate
+#
+# Required .env next to this file (compose loads it automatically):
+#   DOMAIN=example.com              # frontend at DOMAIN, API at api.DOMAIN
+#   API_IMAGE=ghcr.io/<owner>/<repo>-api
+#   API_TAG=latest                  # or a sha-XXXXXXX tag to pin a release
 #   POSTGRES_PASSWORD=<strong>
 #   BETTER_AUTH_SECRET=<32+ chars>
 #   ACHIEVE_SHARED_SECRET=<32+ chars>
 #   ATTESTATION_SECRET=<16+ chars>
 #   ACHIEVE_ALLOWED_IPS=<comma-separated Achieve backend IPs>
-#   S3_ENDPOINT= / S3_ACCESS_KEY_ID= / S3_SECRET_ACCESS_KEY= /
-#   S3_BUCKET_NAME= / S3_PUBLIC_URL=
-#
-# Migrations are run from the api image, not at boot:
-#   docker compose run --rm api bun run --cwd backend db:migrate
+#   S3_ENDPOINT= / S3_REGION= / S3_ACCESS_KEY_ID= / S3_SECRET_ACCESS_KEY= /
+#   S3_BUCKET_NAME= / S3_PUBLIC_URL=           # media uploads
+#   BACKUP_S3_ENDPOINT= / BACKUP_S3_REGION= / BACKUP_S3_ACCESS_KEY_ID= /
+#   BACKUP_S3_SECRET_ACCESS_KEY= / BACKUP_S3_BUCKET=
+#   BACKUP_PASSPHRASE=<strong>      # GPG-encrypts every dump
+#   TUNNEL_TOKEN=<from Cloudflare>  # tunnel mode only
+#   ACME_EMAIL=ops@example.com      # direct mode only
 
 name: achieve-doubts
 
 services:
   traefik:
-    image: traefik:v3.3
+    image: traefik:v3.7
     restart: unless-stopped
+    # Plain HTTP on an internal-only entrypoint. In tunnel mode Cloudflare
+    # terminates TLS and cloudflared connects to traefik:80 over the edge
+    # network. compose.direct.yml replaces this with public 80/443 + ACME.
     command:
       - --providers.docker=true
       # Nothing is routable unless it opts in with traefik.enable=true.
       - --providers.docker.exposedbydefault=false
       - --entrypoints.web.address=:80
-      - --entrypoints.websecure.address=:443
-      - --entrypoints.web.http.redirections.entrypoint.to=websecure
-      - --entrypoints.web.http.redirections.entrypoint.scheme=https
-      - --certificatesresolvers.le.acme.email=${ACME_EMAIL}
-      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
-      - --certificatesresolvers.le.acme.tlschallenge=true
       - --accesslog=true
       - --log.level=INFO
-    ports:
-      - "80:80"
-      - "443:443"
     volumes:
       # Read-only: Traefik only needs to *watch* container labels. A writable
-      # docker socket in a public-facing container is a root-equivalent hole.
+      # docker socket in a network-facing container is a root-equivalent hole.
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - traefik-acme:/letsencrypt
     networks: [edge]
     deploy:
       resources:
         limits: { cpus: "0.50", memory: 256M }
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    profiles: [tunnel]
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+    depends_on: [traefik]
+    networks: [edge]
+    deploy:
+      resources:
+        limits: { cpus: "0.50", memory: 128M }
 
   postgres:
     image: postgres:17-alpine
@@ -70,9 +98,10 @@ services:
       - work_mem=16MB
       - -c
       - maintenance_work_mem=512MB
-      # The app pool opens 10; the rest is headroom for migrations and psql.
+      # Each api replica pools 10 connections; 3 replicas + migrations +
+      # backups + psql still fit comfortably.
       - -c
-      - max_connections=50
+      - max_connections=60
       # NVMe: random reads cost essentially the same as sequential ones.
       - -c
       - random_page_cost=1.1
@@ -84,7 +113,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-    # No `ports:` — deliberately unreachable from the internet.
+    # No `ports:` — deliberately unreachable from outside the host.
     networks: [internal]
     deploy:
       resources:
@@ -113,17 +142,15 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
-    # No published ports — reachable only by the api containers.
     networks: [internal]
     deploy:
       resources:
         limits: { cpus: "0.50", memory: 320M }
 
   api:
-    build:
-      # Repo root: Bun workspace lockfile lives here, not in backend/.
-      context: .
-      dockerfile: backend/Dockerfile
+    # Built and pushed by .github/workflows/api-image.yml; the VPS only pulls.
+    #   docker compose pull api && docker compose up -d api
+    image: ${API_IMAGE}:${API_TAG:-latest}
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -133,9 +160,15 @@ services:
       # instance WebSocket fan-out. Omit it and each replica silently gets its
       # own counters and its own isolated feed.
       REDIS_URL: redis://redis:6379
-      # better-auth issues secure cookies off this origin — it must be the
-      # public https URL, not the container address.
+      # Behind Cloudflare, Traefik only ever sees cloudflared's address, so the
+      # real client IP must come from CF-Connecting-IP. compose.direct.yml
+      # switches this to "proxy". See backend/src/lib/client-ip.ts.
+      CLIENT_IP_SOURCE: cloudflare
+      # better-auth issues cookies for this origin — it must be the public
+      # https URL, not the container address.
       BETTER_AUTH_URL: https://api.${DOMAIN}
+      # The Cloudflare Pages custom domain. It must share a registrable domain
+      # with the API, or the session cookie becomes cross-site and is dropped.
       CORS_ORIGIN: https://${DOMAIN}
       ADMIN_ORIGIN: https://admin.${DOMAIN}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
@@ -143,6 +176,7 @@ services:
       ATTESTATION_SECRET: ${ATTESTATION_SECRET}
       ACHIEVE_ALLOWED_IPS: ${ACHIEVE_ALLOWED_IPS}
       S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_REGION: ${S3_REGION:-auto}
       S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
       S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
       S3_BUCKET_NAME: ${S3_BUCKET_NAME}
@@ -152,35 +186,67 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # Mapping form (not a list) so compose.direct.yml can override single keys.
     labels:
-      - traefik.enable=true
-      - traefik.docker.network=achieve-doubts_edge
-      - traefik.http.routers.api.rule=Host(`api.${DOMAIN}`)
-      - traefik.http.routers.api.entrypoints=websecure
-      - traefik.http.routers.api.tls.certresolver=le
-      - traefik.http.services.api.loadbalancer.server.port=3000
-      - traefik.http.routers.api.middlewares=api-compress@docker
-      - traefik.http.middlewares.api-compress.compress=true
+      traefik.enable: "true"
+      traefik.docker.network: achieve-doubts_edge
+      traefik.http.routers.api.rule: Host(`api.${DOMAIN}`)
+      traefik.http.routers.api.entrypoints: web
+      traefik.http.services.api.loadbalancer.server.port: "3000"
+      # Drop a replica from rotation while it is unhealthy or restarting.
+      traefik.http.services.api.loadbalancer.healthcheck.path: /api/healthz
+      traefik.http.services.api.loadbalancer.healthcheck.interval: 10s
+      traefik.http.routers.api.middlewares: api-compress@docker
+      traefik.http.middlewares.api-compress.compress: "true"
     networks: [edge, internal]
     deploy:
       resources:
-        # Now horizontally scalable — the limiter and the WS hub both go
-        # through Redis. Traefik load-balances every replica automatically,
-        # since they all carry the same router labels:
-        #
-        #   docker compose up -d --scale api=3
-        #
-        # Sized so three replicas still fit alongside Postgres (3.5G), Redis
-        # and Traefik on an 8 GB box.
+        # Sized so three replicas fit alongside Postgres (3.5G), Redis,
+        # Traefik and the backup job on an 8 GB box.
         limits: { cpus: "2.0", memory: 1024M }
 
+  backup:
+    # https://github.com/solectrus/postgres-s3-backup — the tag must match the
+    # Postgres major version above, since it picks the pg_dump version.
+    image: ghcr.io/solectrus/postgres-s3-backup:17
+    restart: unless-stopped
+    environment:
+      # Daily at 00:00 UTC.
+      SCHEDULE: "@daily"
+      BACKUP_KEEP_DAYS: "14"
+      # GPG-encrypts every dump before upload. Store this somewhere other than
+      # the VPS — without it the backups cannot be restored.
+      PASSPHRASE: ${BACKUP_PASSPHRASE}
+      POSTGRES_HOST: postgres
+      POSTGRES_DATABASE: achieve_doubts
+      POSTGRES_USER: achieve
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # Separate credentials (and ideally a separate bucket) from media
+      # uploads: the API's key should not be able to delete backups.
+      S3_ENDPOINT: ${BACKUP_S3_ENDPOINT}
+      S3_REGION: ${BACKUP_S3_REGION}
+      S3_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY}
+      S3_BUCKET: ${BACKUP_S3_BUCKET}
+      S3_PREFIX: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # `internal` has no route to the internet, so the job also needs `egress`
+    # to reach the bucket.
+    networks: [internal, egress]
+    deploy:
+      resources:
+        limits: { cpus: "0.50", memory: 512M }
+
 networks:
-  # Public-facing: Traefik and the two things it routes to.
+  # Traefik, cloudflared and the api. Has outbound internet access.
   edge:
-  # Postgres and the api only. Nothing here is published to the host.
+  # Postgres, Redis and their clients. No route to or from the internet.
   internal:
     internal: true
+  # Outbound-only access for the backup job; nothing listens on it.
+  egress:
 
 volumes:
   pgdata:
-  traefik-acme:

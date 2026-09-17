@@ -1,6 +1,8 @@
 import { mutate } from "swr";
-import useSWRSubscription, { type SWRSubscriptionOptions } from "swr/subscription";
-import { API_URL } from "./api";
+import useSWRSubscription, {
+  type SWRSubscriptionOptions,
+} from "swr/subscription";
+import { api, API_URL } from "./api";
 
 /**
  * Live question feed.
@@ -29,15 +31,17 @@ export type FeedMessage = {
   ts: number;
 };
 
-export const feedSocketUrl = () =>
-  `${API_URL.replace(/^http/, "ws")}/api/questions/feed/ws`;
-
 /** Which cached resources each event invalidates. */
 const AFFECTED: Record<FeedEvent, string[]> = {
   QUESTION_CREATED: ["questions", "questions-infinite"],
   QUESTION_LOCKED: ["questions", "questions-infinite", "question", "solver"],
   QUESTION_UNLOCKED: ["questions", "questions-infinite", "question", "solver"],
-  QUESTION_OVERRIDDEN: ["questions", "questions-infinite", "question", "solver"],
+  QUESTION_OVERRIDDEN: [
+    "questions",
+    "questions-infinite",
+    "question",
+    "solver",
+  ],
   QUESTION_EXPIRED: ["questions", "questions-infinite", "question"],
   QUESTION_ANSWERED: ["questions", "questions-infinite", "question", "solver"],
 };
@@ -71,7 +75,7 @@ export function useFeedSubscription(enabled: boolean) {
         if (closed) return;
 
         try {
-          socket = new WebSocket(feedSocketUrl());
+          socket = api.api.questions.feed.ws.$ws();
         } catch (err) {
           next(err as Error);
           return;

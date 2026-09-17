@@ -1,0 +1,69 @@
+name: api-image
+
+# Builds the backend image and pushes it to GHCR. The VPS never builds — it
+# pulls the tag this workflow publishes (see compose.yml).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - backend/**
+      - package.json
+      - bun.lock
+      - .github/workflows/api-image.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: api-image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      # Gate the image on the same checks CLAUDE.md requires before a commit.
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+        working-directory: backend
+      - run: bun test
+        working-directory: backend
+
+      # GHCR image names must be lowercase; the repository name may not be.
+      - name: Resolve image name
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}-api" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          # sha-<short> pins an exact release; latest follows the default branch.
+          tags: |
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - uses: docker/build-push-action@v6
+        with:
+          # Repo root: the Bun workspace lockfile lives here, not in backend/.
+          context: .
+          file: backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

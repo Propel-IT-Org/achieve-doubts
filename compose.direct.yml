@@ -1,0 +1,46 @@
+# Direct-DNS mode: an A record points api.$DOMAIN at the VPS, DNS-only (grey
+# cloud), and Traefik terminates TLS itself.
+#
+#   docker compose -f compose.yml -f compose.direct.yml up -d
+#
+# Keep the record DNS-only. With Cloudflare's proxy (orange cloud) in front:
+#   * the TLS-ALPN challenge below cannot succeed, because Cloudflare
+#     terminates TLS, so certificates never issue; and
+#   * Traefik sees Cloudflare's edge IPs, so you would need
+#     CLIENT_IP_SOURCE=cloudflare AND a firewall admitting only Cloudflare's
+#     ranges. Note that ports published by Docker bypass ufw — filter in the
+#     DOCKER-USER chain or in Contabo's firewall instead.
+# If you want Cloudflare in front, use the tunnel profile instead.
+
+services:
+  traefik:
+    # Replaces the base command list entirely.
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --certificatesresolvers.le.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.le.acme.tlschallenge=true
+      - --accesslog=true
+      - --log.level=INFO
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - traefik-acme:/letsencrypt
+
+  api:
+    environment:
+      # Traefik is the only hop, and it replaces X-Forwarded-For from
+      # untrusted peers with the address it actually saw.
+      CLIENT_IP_SOURCE: proxy
+    labels:
+      traefik.http.routers.api.entrypoints: websecure
+      traefik.http.routers.api.tls.certresolver: le
+
+volumes:
+  traefik-acme:
