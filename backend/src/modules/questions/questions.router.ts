@@ -82,10 +82,12 @@ export const questionsRouter = new Hono<AppEnv>()
       return c.json({ count: value });
     },
   )
-  // Public: events carry question ids only, which the list already exposes,
-  // and every viewer's page should stay current — not just solvers'.
+  // Signed-in users only: solvers waiting to lock new questions the moment
+  // they arrive, and students following their own. Guests read on refresh.
   .get(
     "/feed/ws",
+    requireAuth,
+    requirePermission({ question: ["list"] }),
     upgradeWebSocket((c: Context<AppEnv, "/feed/ws", BlankInput>) => {
       const feedHub = c.var.di.get("feed");
       return {

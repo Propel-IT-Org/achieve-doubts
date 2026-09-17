@@ -8,8 +8,8 @@ import { createSubscriber, getRedis } from "../lib/redis";
 
 /**
  * Everything a viewer can see change on a question. Events carry ids only —
- * clients re-read what they're allowed to see, so the public socket never
- * leaks private content (solutions, follow-up threads).
+ * clients re-read what they're allowed to see, so the socket never carries
+ * content a subscriber couldn't fetch themselves.
  */
 export type FeedEvent =
 	| "QUESTION_CREATED"
