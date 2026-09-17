@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Achieve (test portal)</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <header>
+      <strong>Achieve</strong>
+      <span class="badge">Test portal</span>
+      <button type="button" id="sign-out" hidden>Sign out</button>
+    </header>
+
+    <main>
+      <p id="error" class="error" role="alert" hidden></p>
+
+      <!-- Step 1: "log in" to Achieve. Nothing is checked here; the details
+           are simply what Achieve would know about a signed-in student. -->
+      <section id="sign-in">
+        <h1>Sign in to Achieve</h1>
+        <p class="muted">
+          Enter the student details Achieve would send to Doubts. They stay in
+          this tab only.
+        </p>
+        <form id="sign-in-form">
+          <label>Name <input name="name" required autocomplete="name" /></label>
+          <label>Email <input name="email" type="email" required autocomplete="email" /></label>
+          <label>Phone <span class="muted">(optional)</span>
+            <input name="phone" type="tel" autocomplete="tel" />
+          </label>
+          <label>Institution <span class="muted">(optional)</span>
+            <input name="institution" />
+          </label>
+          <label>Batch
+            <input name="batch" required placeholder="hscfrb26" />
+            <small class="muted">Must be an active batch in the Doubts admin panel.</small>
+          </label>
+          <label>Portal access code
+            <input name="accessCode" type="password" required autocomplete="off" />
+          </label>
+          <button type="submit">Sign in</button>
+        </form>
+      </section>
+
+      <!-- Step 2: the student dashboard with the Doubt Solve button. -->
+      <section id="dashboard" hidden>
+        <h1>Welcome, <span id="student-name"></span></h1>
+        <dl id="student-details"></dl>
+
+        <div class="card">
+          <h2>Doubt Solve</h2>
+          <p class="muted">Ask a question and get it answered by a solver.</p>
+          <form id="doubt-solve-form" method="post" action="/doubt-solve">
+            <input type="hidden" name="name" />
+            <input type="hidden" name="email" />
+            <input type="hidden" name="phone" />
+            <input type="hidden" name="institution" />
+            <input type="hidden" name="batch" />
+            <input type="hidden" name="accessCode" />
+            <button type="submit">Doubt Solve</button>
+          </form>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

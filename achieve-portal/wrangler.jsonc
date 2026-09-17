@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // A stand-in for Achieve, for testing the student SSO handshake end to end.
+  // The static site in public/ plays Achieve's student dashboard; the worker
+  // plays Achieve's backend, calling the Doubts API with the shared secret.
+  "name": "achieve-portal",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-09-17",
+  // Requests that match a file are served from public/; everything else
+  // (POST /doubt-solve) reaches the worker.
+  "assets": { "directory": "./public" },
+  "observability": { "enabled": true },
+  "vars": {
+    // The Doubts backend. Its BETTER_AUTH_URL must be this same origin.
+    "DOUBTS_API_URL": "http://localhost:3000"
+  }
+  // Secrets — `.dev.vars` locally, `wrangler secret put` when deployed:
+  //   ACHIEVE_SHARED_SECRET  the backend's ACHIEVE_SHARED_SECRET
+  //   PORTAL_ACCESS_CODE     required to use this portal at all
+}

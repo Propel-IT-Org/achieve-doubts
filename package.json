@@ -2,7 +2,8 @@
   "name": "achieve-doubts",
   "workspaces": [
     "frontend",
-    "backend"
+    "backend",
+    "achieve-portal"
   ],
   "devDependencies": {
     "@types/bun": "latest"

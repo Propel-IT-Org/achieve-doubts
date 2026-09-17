@@ -1,0 +1,3 @@
+# Copy to .dev.vars (git-ignored) for `bun run dev`.
+ACHIEVE_SHARED_SECRET=dev_achieve_shared_secret_placeholder_change_me
+PORTAL_ACCESS_CODE=change-me

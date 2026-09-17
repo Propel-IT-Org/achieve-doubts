@@ -11,6 +11,13 @@
         "typescript": "^5",
       },
     },
+    "achieve-portal": {
+      "name": "@achieve/portal",
+      "devDependencies": {
+        "typescript": "^5.9.3",
+        "wrangler": "^4.133.0",
+      },
+    },
     "backend": {
       "name": "@achieve/doubts-backend",
       "dependencies": {
@@ -67,6 +74,8 @@
     "@achieve/doubts-backend": ["@achieve/doubts-backend@workspace:backend"],
 
     "@achieve/doubts-frontend": ["@achieve/doubts-frontend@workspace:frontend"],
+
+    "@achieve/portal": ["@achieve/portal@workspace:achieve-portal"],
 
     "@aws-sdk/checksums": ["@aws-sdk/checksums@3.1001.0", "", { "dependencies": { "@aws-sdk/core": "^3.978.0", "@aws-sdk/types": "^3.974.5", "@smithy/core": "^3.33.3", "@smithy/types": "^4.17.2", "tslib": "^2.6.2" } }, "sha512-6uTniZc87q+B5eXouGTl+7Tmc482rEeCcvxpsvREP8EfF0gvloRZ41UOA9sbSJlyy8TbqIBXb3kKfKarEArUQA=="],
 
