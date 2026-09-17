@@ -1,6 +1,7 @@
 import { Component, type ReactNode, Suspense } from "react";
 import { AlertTriangle, RotateCcw } from "lucide-react";
 import { useSWRConfig } from "swr";
+import { isRetryable } from "~/lib/swr-config";
 
 type Props = {
   /** Shown while any child is suspended on its data. */
@@ -40,7 +41,11 @@ class SectionErrorBoundary extends Component<
     return (
       <SectionError
         text={this.props.errorText ?? this.state.error.message}
-        onRetry={() => this.setState({ error: null })}
+        onRetry={
+          isRetryable(this.state.error)
+            ? () => this.setState({ error: null })
+            : undefined
+        }
       />
     );
   }
@@ -51,11 +56,13 @@ function SectionError({
   onRetry,
 }: {
   text: string;
-  onRetry: () => void;
+  /** Omitted when trying again can't help (a 404, a 403). */
+  onRetry?: () => void;
 }) {
   const { cache } = useSWRConfig();
 
   const retry = () => {
+    if (!onRetry) return;
     // Suspense re-throws a cached error without refetching, so the failed
     // entries have to go before the section renders again.
     for (const key of cache.keys()) {
@@ -68,10 +75,12 @@ function SectionError({
     <div className="err" role="alert">
       <AlertTriangle size={16} />
       <span style={{ flex: 1 }}>{text}</span>
-      <button type="button" className="btn btn-text" onClick={retry}>
-        <RotateCcw size={14} />
-        Try again
-      </button>
+      {onRetry && (
+        <button type="button" className="btn btn-text" onClick={retry}>
+          <RotateCcw size={14} />
+          Try again
+        </button>
+      )}
     </div>
   );
 }

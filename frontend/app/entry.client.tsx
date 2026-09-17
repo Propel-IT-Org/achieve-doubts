@@ -2,6 +2,7 @@ import { StrictMode, startTransition } from "react";
 import { hydrateRoot } from "react-dom/client";
 import { HydratedRouter } from "react-router/dom";
 import { SWRConfig } from "swr";
+import { swrErrorConfig } from "./lib/swr-config";
 
 startTransition(() => {
   hydrateRoot(
@@ -16,12 +17,13 @@ startTransition(() => {
       <SWRConfig
         value={{
           suspense: true,
-          revalidateOnReconnect: false,
+          revalidateOnReconnect: true,
           revalidateOnFocus: false,
-          // Preloaded data is fresh enough to paint immediately; the feed
-          // subscription is what pushes updates after that.
+          // Preloaded data is fresh enough to paint immediately; the
+          // questions page's live feed pushes changes after that.
           revalidateIfStale: true,
           keepPreviousData: true,
+          ...swrErrorConfig,
         }}
       >
         <HydratedRouter />
