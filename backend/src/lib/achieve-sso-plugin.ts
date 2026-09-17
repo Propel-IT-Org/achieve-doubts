@@ -104,7 +104,11 @@ export function achieveSsoPlugin(): BetterAuthPlugin {
         fields: {
           label: { type: "string", required: true },
           active: { type: "boolean", required: true },
-          createdAt: { type: "date", required: true },
+          createdAt: {
+            type: "date",
+            required: true,
+            defaultValue: () => new Date(),
+          },
         },
       },
       studentProfiles: {
@@ -126,9 +130,22 @@ export function achieveSsoPlugin(): BetterAuthPlugin {
             references: { model: "batches", field: "id", onDelete: "set null" },
           },
           achieveKey: { type: "string", required: true, unique: true },
-          createdAt: { type: "date", required: true },
-          updatedAt: { type: "date", required: true },
+          createdAt: {
+            type: "date",
+            required: true,
+            defaultValue: () => new Date(),
+          },
+          updatedAt: {
+            type: "date",
+            required: true,
+            defaultValue: () => new Date(),
+            onUpdate: () => /* @__PURE__ */ new Date(),
+          },
         },
+        indexes: [
+          { name: "student_profile_user_idx", fields: ["userId"] },
+          { name: "student_profile_batch_idx", fields: ["batchId"] },
+        ],
       },
       achieveSsoTokens: {
         fields: {
@@ -145,8 +162,16 @@ export function achieveSsoPlugin(): BetterAuthPlugin {
           },
           expiresAt: { type: "date", required: true },
           createdIp: { type: "string", required: false },
-          createdAt: { type: "date", required: true },
+          createdAt: {
+            type: "date",
+            required: true,
+            defaultValue: () => new Date(),
+          },
         },
+        indexes: [
+          { name: "achieve_sso_token_user_idx", fields: ["userId"] },
+          { name: "achieve_sso_token_batch_idx", fields: ["batchId"] },
+        ],
       },
     },
     endpoints: {
@@ -252,8 +277,9 @@ export function achieveSsoPlugin(): BetterAuthPlugin {
                 await ctx.context.internalAdapter.findUserByEmail(
                   normalizedEmail,
                 );
-              const foundRole = (found?.user as { role?: string | null } | undefined)
-                ?.role;
+              const foundRole = (
+                found?.user as { role?: string | null } | undefined
+              )?.role;
 
               if (found && foundRole !== "student") {
                 // This email already belongs to a non-student account (e.g.
