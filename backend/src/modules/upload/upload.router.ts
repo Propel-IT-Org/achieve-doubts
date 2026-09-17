@@ -4,7 +4,6 @@ import { z } from "zod";
 import type { AppEnv } from "../../lib/di";
 import { zodErrorHook } from "../../lib/errors";
 import { requireAuth } from "../../middleware/auth";
-import { createRateLimiter, sessionOrIpKey } from "../../middleware/rate-limit";
 import { UPLOAD_TYPE_NAMES, UPLOAD_TYPES } from "./upload.util";
 
 const presignSchema = z
@@ -18,18 +17,9 @@ const presignSchema = z
     message: "Images must be 200 KB or smaller, and voice notes 3 MB",
   });
 
-// Abuse control: each URL still lets a user write an object to the bucket.
-const presignRateLimit = createRateLimiter({
-  prefix: "rl:presign",
-  windowMs: 60_000,
-  max: 30,
-  keyFn: sessionOrIpKey,
-});
-
 export const uploadRouter = new Hono<AppEnv>().post(
   "/presign",
   requireAuth,
-  presignRateLimit,
   zValidator("json", presignSchema, zodErrorHook),
   async (c) => {
     const { contentType, size } = c.req.valid("json");

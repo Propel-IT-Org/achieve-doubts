@@ -1,8 +1,10 @@
+import { z } from "zod";
 import { env } from "../../env";
 
 /**
  * The only two formats accepted, each the most efficient choice the browser
- * can produce, with its size cap:
+ * can produce, with its size cap. Both are signed into the presigned URL, so
+ * the bucket enforces them.
  *
  * - WebP images. The browser resizes and re-encodes every image to fit 200 KB
  *   (frontend lib/image.ts) — plenty for a legible photo of a question.
@@ -21,29 +23,24 @@ export const UPLOAD_TYPE_NAMES = Object.keys(UPLOAD_TYPES) as [
   ...UploadType[],
 ];
 
-/** `uploads/<owner>/<timestamp>-<uuid>.<ext>`, as issued by UploadService. */
-const KEY_PATTERN = /^uploads\/([\w-]+)\/\d+-[0-9a-f-]{36}\.(webp|webm)$/;
-
-const KIND_BY_EXTENSION: Record<string, "image" | "audio"> = {
-  webp: "image",
-  webm: "audio",
-};
+const escapeRegExp = (text: string) =>
+  text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
- * True if `url` is an upload this API issued to `ownerId`, of the given kind.
- *
- * Posts only store attachment URLs that pass this. Otherwise a post could
- * embed any external address, and every viewer's browser would request it —
- * leaking their IP to whoever runs that server.
+ * Request-schema type for an attachment URL: it must be one of our own
+ * uploads of the given kind. Without this a post could embed any external
+ * address, and every viewer's browser would request it — leaking their IP to
+ * whoever runs that server.
  */
-export function isOwnUpload(
-  url: string,
-  ownerId: string,
-  kind: "image" | "audio",
-): boolean {
-  const base = `${env.S3_PUBLIC_URL.replace(/\/+$/, "")}/`;
-  const match = url.startsWith(base)
-    ? url.slice(base.length).match(KEY_PATTERN)
-    : null;
-  return match?.[1] === ownerId && KIND_BY_EXTENSION[match[2] ?? ""] === kind;
+export function uploadUrl(kind: "image" | "audio") {
+  const extension = kind === "image" ? "webp" : "webm";
+  const base = escapeRegExp(env.S3_PUBLIC_URL.replace(/\/+$/, ""));
+  const pattern = new RegExp(
+    `^${base}/uploads/[\\w-]+/\\d+-[0-9a-f-]{36}\\.${extension}$`,
+  );
+  return z
+    .url()
+    .refine((url) => pattern.test(url), {
+      message: `Attach a ${kind === "image" ? "photo" : "voice note"} uploaded here`,
+    });
 }

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { uploadUrl } from "../upload/upload.util";
 
 const questionStatusValues = [
 	"waiting",
@@ -17,7 +18,7 @@ export const createQuestionSchema = z.object({
 	bookId: z.string().min(1),
 	chapterId: z.coerce.number().int().positive(),
 	text: z.string().min(15),
-	photoUrl: z.url().optional().nullable(),
+	photoUrl: uploadUrl("image").optional().nullable(),
 });
 
 export const listQuestionsQuerySchema = z.object({

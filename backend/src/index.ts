@@ -15,7 +15,6 @@ import { type ApiErrorBody, codeForStatus, toErrorBody } from "./lib/errors";
 import { type AppContainer, type AppEnv, container } from "./lib/di";
 import { isDraining } from "./lib/lifecycle";
 import { requireAuth, requirePermission } from "./middleware/auth";
-import { requireOwnMedia } from "./middleware/media-urls";
 import { createRateLimiter, sessionOrIpKey } from "./middleware/rate-limit";
 import { adminRouter } from "./modules/admin/admin.router";
 import { authRouter } from "./modules/auth/auth.router";
@@ -124,12 +123,6 @@ export function createApp(customContainer: AppContainer = container) {
         return _root.createScope({ ws: wsServer as never });
       },
     }),
-  );
-
-  // Attachment URLs must be the caller's own uploads, on every route. Not on
-  // /api/auth: better-auth needs the raw body this would consume.
-  app.use("/api/*", (c, next) =>
-    c.req.path.startsWith("/api/auth/") ? next() : requireOwnMedia(c, next),
   );
 
   // Root error handling. Every failure that escapes a handler — thrown
