@@ -1,21 +1,8 @@
-import { S3Client } from "bun";
+import type { S3Client } from "bun";
 import { env } from "../../env";
 import { UPLOAD_TYPES, type UploadType } from "./upload.util";
 
 const PRESIGN_TTL_SECONDS = 120;
-
-function clientFromEnv(): S3Client | null {
-  if (!env.S3_ENDPOINT || !env.S3_ACCESS_KEY_ID || !env.S3_SECRET_ACCESS_KEY) {
-    return null;
-  }
-  return new S3Client({
-    endpoint: env.S3_ENDPOINT,
-    region: env.S3_REGION,
-    bucket: env.S3_BUCKET_NAME,
-    accessKeyId: env.S3_ACCESS_KEY_ID,
-    secretAccessKey: env.S3_SECRET_ACCESS_KEY,
-  });
-}
 
 /**
  * Issues presigned PUT URLs so browsers upload straight to the bucket; files
@@ -29,12 +16,9 @@ function clientFromEnv(): S3Client | null {
  * run as a page.
  */
 export class UploadService {
-  constructor(private s3: S3Client | null = clientFromEnv()) {}
+  constructor(private s3: S3Client) {}
 
-  /** Null when no bucket is configured (local development without S3). */
   presign(type: UploadType, ownerId: string) {
-    if (!this.s3) return null;
-
     // The key — and so the extension — is chosen here, never by the client.
     const key = `uploads/${ownerId}/${Date.now()}-${crypto.randomUUID()}.${UPLOAD_TYPES[type].extension}`;
 

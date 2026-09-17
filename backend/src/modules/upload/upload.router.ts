@@ -2,7 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../../lib/di";
-import { fail, zodErrorHook } from "../../lib/errors";
+import { zodErrorHook } from "../../lib/errors";
 import { requireAuth } from "../../middleware/auth";
 import { createRateLimiter, sessionOrIpKey } from "../../middleware/rate-limit";
 import { UPLOAD_TYPE_NAMES, UPLOAD_TYPES } from "./upload.util";
@@ -16,7 +16,7 @@ const presignSchema = z
   })
   .refine((value) => value.size <= UPLOAD_TYPES[value.contentType].maxBytes, {
     path: ["size"],
-    message: "Images must be 3 MB or smaller, and recordings 20 MB",
+    message: "Images must be 200 KB or smaller, and voice notes 3 MB",
   });
 
 // Each URL can accept a large body, so issuing them is rate limited.
@@ -34,15 +34,8 @@ export const uploadRouter = new Hono<AppEnv>().post(
   zValidator("json", presignSchema, zodErrorHook),
   (c) => {
     const { contentType } = c.req.valid("json");
-    const upload = c.var.di.get("upload").presign(contentType, c.var.user.id);
-    if (!upload) {
-      return fail(
-        c,
-        503,
-        "INTERNAL_ERROR",
-        "File uploads aren't configured on this server",
-      );
-    }
-    return c.json(upload);
+    return c.json(
+      c.var.di.get("upload").presign(contentType, c.var.user.id),
+    );
   },
 );

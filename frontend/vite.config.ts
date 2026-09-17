@@ -7,4 +7,9 @@ export default defineConfig({
 	resolve: {
 		tsconfigPaths: true,
 	},
+	optimizeDeps: {
+		// Locates its .wasm file relative to its own module URL, which Vite's
+		// dependency pre-bundling would break in development.
+		exclude: ["@jsquash/webp"],
+	},
 });

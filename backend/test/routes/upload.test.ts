@@ -7,7 +7,7 @@ import { createTestClient } from "../helpers/test-client";
 const student = createMockAuth({ id: "student-u1", role: "student" });
 
 // Presigning needs credentials but no network, so a fake bucket will do.
-const withBucket = new UploadService(
+const upload = new UploadService(
   new S3Client({
     endpoint: "https://acct.r2.cloudflarestorage.com",
     region: "auto",
@@ -19,7 +19,7 @@ const withBucket = new UploadService(
 
 describe("API Route: POST /api/upload/presign", () => {
   it("returns 401 when unauthenticated", async () => {
-    const client = createTestClient({ auth: createMockAuth(null) });
+    const client = createTestClient({ auth: createMockAuth(null), upload });
     const res = await client.api.upload.presign.$post({
       json: { contentType: "image/webp", size: 120_000 },
     });
@@ -28,9 +28,9 @@ describe("API Route: POST /api/upload/presign", () => {
   });
 
   it("issues an upload URL under the caller's own prefix", async () => {
-    const client = createTestClient({ auth: student, upload: withBucket });
+    const client = createTestClient({ auth: student, upload });
     const res = await client.api.upload.presign.$post({
-      json: { contentType: "image/webp", size: 240_000 },
+      json: { contentType: "image/webp", size: 150_000 },
     });
 
     expect(res.status).toBe(200);
@@ -44,32 +44,31 @@ describe("API Route: POST /api/upload/presign", () => {
     expect(body.headers["content-type"]).toBe("image/webp");
   });
 
-  it("refuses types the browser never produces", async () => {
-    const client = createTestClient({ auth: student, upload: withBucket });
-    const res = await client.api.upload.presign.$post({
-      json: { contentType: "image/png" as never, size: 1000 },
-    });
-    expect(res.status).toBe(400);
+  it("refuses any format other than WebP and WebM", async () => {
+    const client = createTestClient({ auth: student, upload });
+    for (const contentType of ["image/jpeg", "image/png", "audio/mp4"]) {
+      const res = await client.api.upload.presign.$post({
+        json: { contentType: contentType as never, size: 1000 },
+      });
+      expect(res.status as number).toBe(400);
+    }
   });
 
-  it("refuses a declared size over the cap", async () => {
-    const client = createTestClient({ auth: student, upload: withBucket });
+  it("refuses an image over 200 KB", async () => {
+    const client = createTestClient({ auth: student, upload });
     const res = await client.api.upload.presign.$post({
-      json: { contentType: "image/webp", size: 4 * 1024 * 1024 },
+      json: { contentType: "image/webp", size: 200 * 1024 + 1 },
     });
-    expect(res.status).toBe(400);
+    expect(res.status as number).toBe(400);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe("VALIDATION_FAILED");
   });
 
-  it("answers 503 when no bucket is configured", async () => {
-    const client = createTestClient({
-      auth: student,
-      upload: new UploadService(null),
-    });
+  it("accepts a voice note up to 3 MB", async () => {
+    const client = createTestClient({ auth: student, upload });
     const res = await client.api.upload.presign.$post({
-      json: { contentType: "image/webp", size: 1000 },
+      json: { contentType: "audio/webm", size: 3 * 1024 * 1024 },
     });
-    expect(res.status).toBe(503);
+    expect(res.status).toBe(200);
   });
 });

@@ -22,34 +22,32 @@ const service = new UploadService(
 describe("UploadService.presign", () => {
   it("issues a two-minute PUT URL for a server-chosen key", () => {
     const upload = service.presign("image/webp", "u1");
-    const url = new URL(upload?.uploadUrl ?? "");
+    const url = new URL(upload.uploadUrl);
 
     expect(url.host).toBe("acct.r2.cloudflarestorage.com");
     expect(url.pathname).toMatch(/^\/media\/uploads\/u1\/\d+-[0-9a-f-]{36}\.webp$/);
     expect(url.searchParams.get("X-Amz-Expires")).toBe("120");
-    expect(upload?.headers["content-type"]).toBe("image/webp");
-    expect(upload?.publicUrl).toStartWith(`${base}/uploads/u1/`);
+    expect(upload.headers["content-type"]).toBe("image/webp");
+    expect(upload.publicUrl).toStartWith(`${base}/uploads/u1/`);
+  });
+
+  it("names voice notes .webm", () => {
+    expect(service.presign("audio/webm", "u1").publicUrl).toEndWith(".webm");
   });
 
   it("adds no checksum parameters a browser PUT couldn't satisfy", () => {
-    const url = new URL(service.presign("image/jpeg", "u1")?.uploadUrl ?? "");
+    const url = new URL(service.presign("image/webp", "u1").uploadUrl);
     const checksums = [...url.searchParams.keys()].filter((name) =>
       name.toLowerCase().startsWith("x-amz-checksum"),
     );
     expect(checksums).toEqual([]);
   });
-
-  it("returns null when no bucket is configured", () => {
-    expect(new UploadService(null).presign("image/webp", "u1")).toBeNull();
-  });
 });
 
 describe("isOwnUpload", () => {
   it("accepts the owner's upload of the right kind", () => {
-    const image = service.presign("image/jpeg", "u1")?.publicUrl ?? "";
-    const audio = service.presign("audio/mp4", "u1")?.publicUrl ?? "";
-    expect(isOwnUpload(image, "u1", "image")).toBe(true);
-    expect(isOwnUpload(audio, "u1", "audio")).toBe(true);
+    expect(isOwnUpload(service.presign("image/webp", "u1").publicUrl, "u1", "image")).toBe(true);
+    expect(isOwnUpload(service.presign("audio/webm", "u1").publicUrl, "u1", "audio")).toBe(true);
   });
 
   it("rejects external URLs, which every viewer's browser would request", () => {
@@ -57,11 +55,12 @@ describe("isOwnUpload", () => {
     expect(isOwnUpload(`${base}.evil.example/uploads/u1/x.webp`, "u1", "image")).toBe(false);
   });
 
-  it("rejects someone else's upload, the wrong kind, and crafted keys", () => {
+  it("rejects someone else's upload, the wrong kind, other formats and crafted keys", () => {
     expect(isOwnUpload(urlFor("u2", "webp"), "u1", "image")).toBe(false);
     expect(isOwnUpload(urlFor("u1", "webm"), "u1", "image")).toBe(false);
     expect(isOwnUpload(urlFor("u1", "webp"), "u1", "audio")).toBe(false);
+    expect(isOwnUpload(urlFor("u1", "jpg"), "u1", "image")).toBe(false);
+    expect(isOwnUpload(urlFor("u1", "m4a"), "u1", "audio")).toBe(false);
     expect(isOwnUpload(`${base}/uploads/u1/../u2/x.webp`, "u1", "image")).toBe(false);
-    expect(isOwnUpload(`${base}/uploads/u1/photo.html`, "u1", "image")).toBe(false);
   });
 });

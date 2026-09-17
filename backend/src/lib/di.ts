@@ -12,28 +12,30 @@ import { ReportsService } from "../modules/reports/reports.service";
 import { UploadService } from "../modules/upload/upload.service";
 import { FeedHub } from "../ws/hub";
 import { createAuth } from "./auth";
+import { createS3 } from "./s3";
 
 export function buildContainer() {
-	return new Container()
-		.registerFactory("db", createDatabase)
-		.registerFactory("auth", (c) => createAuth(c.get("db")), ["db"])
-		.registerClass("upload", UploadService, [])
-		.registerClass("questions", QuestionsService, ["db"])
-		.registerClass("solutions", SolutionsService, ["db"])
-		.registerClass("thread", ThreadService, ["db"])
-		.registerClass("comments", CommentsService, ["db"])
-		.registerClass("notifications", NotificationsService, ["db"])
-		.registerClass("reports", ReportsService, ["db"])
-		.registerClass("admin", AdminService, ["db", "auth"])
-		.declareScopeInputs<{ ws: Bun.ServerWebSocket<BunWebSocketData> }>()
-		.registerClass("feed", FeedHub, ["ws"], "scoped");
+  return new Container()
+    .registerFactory("db", createDatabase)
+    .registerFactory("auth", (c) => createAuth(c.get("db")), ["db"])
+    .registerFactory("s3", createS3)
+    .registerClass("upload", UploadService, ["s3"])
+    .registerClass("questions", QuestionsService, ["db"])
+    .registerClass("solutions", SolutionsService, ["db"])
+    .registerClass("thread", ThreadService, ["db"])
+    .registerClass("comments", CommentsService, ["db"])
+    .registerClass("notifications", NotificationsService, ["db"])
+    .registerClass("reports", ReportsService, ["db"])
+    .registerClass("admin", AdminService, ["db", "auth"])
+    .declareScopeInputs<{ ws: Bun.ServerWebSocket<BunWebSocketData> }>()
+    .registerClass("feed", FeedHub, ["ws"], "scoped");
 }
 
 export const container = buildContainer();
 
 export type AppContainer = ReturnType<typeof buildContainer>;
 export type AppEnv = InferdiHonoScopeEnv<
-	ReturnType<
-		typeof container.createScope<{ ws: Bun.ServerWebSocket<BunWebSocketData> }>
-	>
+  ReturnType<
+    typeof container.createScope<{ ws: Bun.ServerWebSocket<BunWebSocketData> }>
+  >
 >;

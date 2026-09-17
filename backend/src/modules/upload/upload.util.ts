@@ -1,17 +1,17 @@
 import { env } from "../../env";
 
-const MB = 1024 * 1024;
-
 /**
- * What the presign endpoint issues URLs for, with each type's size cap. The
- * browser re-encodes every image first — to WebP, or to JPEG on Safari, which
- * can't encode WebP from a canvas.
+ * The only two formats accepted, each the most efficient choice the browser
+ * can produce, with its size cap:
+ *
+ * - WebP images. The browser resizes and re-encodes every image to fit 200 KB
+ *   (frontend lib/image.ts) — plenty for a legible photo of a question.
+ * - Opus voice notes in WebM, recorded at 24 kbps (frontend lib/audio.ts):
+ *   3 MB is about 16 minutes, above the 15-minute limit on a note.
  */
 export const UPLOAD_TYPES = {
-  "image/webp": { extension: "webp", maxBytes: 3 * MB },
-  "image/jpeg": { extension: "jpg", maxBytes: 3 * MB },
-  "audio/webm": { extension: "webm", maxBytes: 20 * MB },
-  "audio/mp4": { extension: "m4a", maxBytes: 20 * MB },
+  "image/webp": { extension: "webp", maxBytes: 200 * 1024 },
+  "audio/webm": { extension: "webm", maxBytes: 3 * 1024 * 1024 },
 } as const;
 
 export type UploadType = keyof typeof UPLOAD_TYPES;
@@ -22,14 +22,11 @@ export const UPLOAD_TYPE_NAMES = Object.keys(UPLOAD_TYPES) as [
 ];
 
 /** `uploads/<owner>/<timestamp>-<uuid>.<ext>`, as issued by UploadService. */
-const KEY_PATTERN =
-  /^uploads\/([\w-]+)\/\d+-[0-9a-f-]{36}\.(webp|jpg|webm|m4a)$/;
+const KEY_PATTERN = /^uploads\/([\w-]+)\/\d+-[0-9a-f-]{36}\.(webp|webm)$/;
 
 const KIND_BY_EXTENSION: Record<string, "image" | "audio"> = {
   webp: "image",
-  jpg: "image",
   webm: "audio",
-  m4a: "audio",
 };
 
 /**
