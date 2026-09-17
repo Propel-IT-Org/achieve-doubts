@@ -35,11 +35,63 @@ export default {
     if (url.pathname === "/doubt-solve" && request.method === "POST") {
       return startDoubtSolve(request, env);
     }
+    if (url.pathname === "/probe") {
+      return probe(url, env);
+    }
     // Static files are served before the worker runs, so anything else here
     // is a path that doesn't exist.
     return new Response("Not found", { status: 404 });
   },
 } satisfies ExportedHandler<Env>;
+
+/**
+ * Diagnostic: calls the API from inside the worker and reports what came
+ * back, so a refusal by Cloudflare or a proxy can be told apart from the
+ * API's own answer. The handshake is probed with a deliberately wrong
+ * secret, which a healthy path answers `401 INVALID_AUTH` in JSON — no
+ * account is created either way.
+ *
+ * Open /probe?code=<PORTAL_ACCESS_CODE>.
+ */
+async function probe(url: URL, env: Env): Promise<Response> {
+  if (!(await sameSecret(url.searchParams.get("code") ?? "", env.PORTAL_ACCESS_CODE))) {
+    return new Response("Wrong access code", { status: 403 });
+  }
+
+  const api = new URL(env.DOUBTS_API_URL);
+  const look = async (path: string, init?: RequestInit) => {
+    try {
+      const res = await fetch(new URL(path, api), init);
+      const body = await res.text();
+      return {
+        status: res.status,
+        contentType: res.headers.get("content-type"),
+        server: res.headers.get("server"),
+        cfRay: res.headers.get("cf-ray"),
+        cfMitigated: res.headers.get("cf-mitigated"),
+        body: body.slice(0, 400),
+      };
+    } catch (err) {
+      return { error: String(err) };
+    }
+  };
+
+  return Response.json(
+    {
+      api: api.origin,
+      health: await look("/api/healthz"),
+      handshake: await look("/api/auth/achieve/sessions/initiate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Achieve-Auth": "deliberately-wrong-secret",
+        },
+        body: JSON.stringify({ Name: "probe", Email: "probe@example.com", Batch: "probe" }),
+      }),
+    },
+    { headers: { "Cache-Control": "no-store" } },
+  );
+}
 
 async function startDoubtSolve(request: Request, env: Env): Promise<Response> {
   if (!env.ACHIEVE_SHARED_SECRET || !env.PORTAL_ACCESS_CODE) {

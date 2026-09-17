@@ -35,7 +35,9 @@ export function createApp(customContainer: AppContainer = container) {
   app.use(
     "*",
     logger((...rest) =>
-      !rest[0].includes("/api/healthz") ? console.log(...rest) : void 0,
+      !rest[0].includes("/api/healthz")
+        ? console.log(`[${new Date().toISOString()}]`, ...rest)
+        : void 0,
     ),
   );
   app.use("*", secureHeaders());
