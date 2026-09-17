@@ -17,10 +17,17 @@
 #        docker compose -f compose.yml -f compose.direct.yml up -d
 #
 # Scale the API (Traefik load-balances every replica automatically):
-#   docker compose --profile tunnel up -d --scale api=3
+#   API_REPLICAS=3 docker compose --profile tunnel up -d
+#
+# Zero-downtime updates. `docker compose up` replaces containers stop-first,
+# so use the docker-rollout plugin (github.com/wowu/docker-rollout), which
+# starts new replicas, waits for their health check, then drains the old:
+#   docker compose pull api && docker rollout api
+# Under Swarm (`docker stack deploy`) the api's update_config does the same.
 #
 # Migrations run from the api image, never at boot:
-#   docker compose run --rm api bun run --cwd backend db:migrate
+#   docker compose run --rm api migrate
+#   docker compose run --rm api seed          # first deploy only (taxonomy)
 #
 # Required .env next to this file (compose loads it automatically):
 #   DOMAIN=example.com              # frontend at DOMAIN, API at api.DOMAIN
@@ -194,16 +201,58 @@ services:
       traefik.http.routers.api.entrypoints: web
       traefik.http.services.api.loadbalancer.server.port: "3000"
       # Drop a replica from rotation while it is unhealthy or restarting.
+      # A draining replica answers 503 here. interval + timeout (15s) must stay
+      # below SHUTDOWN_DRAIN_MS, or Traefik could still route to a replica that
+      # has stopped accepting connections.
       traefik.http.services.api.loadbalancer.healthcheck.path: /api/healthz
       traefik.http.services.api.loadbalancer.healthcheck.interval: 10s
+      traefik.http.services.api.loadbalancer.healthcheck.timeout: 5s
       traefik.http.routers.api.middlewares: api-compress@docker
       traefik.http.middlewares.api-compress.compress: "true"
     networks: [edge, internal]
+    # Repeated from the Dockerfile on purpose: images built in OCI format
+    # (Podman's default) drop HEALTHCHECK, and rolling updates depend on it.
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+    # SIGTERM -> drain (SHUTDOWN_DRAIN_MS, 15s) -> finish in-flight requests
+    # (SHUTDOWN_TIMEOUT_MS, 10s) -> exit. Must exceed that 25s, or the replica
+    # is SIGKILLed mid-request.
+    stop_grace_period: 35s
     deploy:
+      mode: replicated
+      replicas: ${API_REPLICAS:-2}
+      # update_config and rollback_config are honoured by `docker stack deploy`
+      # (Swarm) only. Plain `docker compose up` ignores them and replaces
+      # containers stop-first — use `docker rollout api` there instead.
+      update_config:
+        # One replica at a time, new one healthy BEFORE the old one stops.
+        parallelism: 1
+        order: start-first
+        delay: 10s
+        # Watch each new replica this long before moving on; any failure in
+        # that window reverts the whole update.
+        monitor: 30s
+        failure_action: rollback
+        max_failure_ratio: 0
+      rollback_config:
+        parallelism: 1
+        order: start-first
+        delay: 5s
+        monitor: 30s
+        failure_action: pause
+      restart_policy:
+        condition: any
+        delay: 5s
+        window: 60s
       resources:
         # Sized so three replicas fit alongside Postgres (3.5G), Redis,
         # Traefik and the backup job on an 8 GB box.
         limits: { cpus: "2.0", memory: 1024M }
+        reservations: { memory: 256M }
 
   backup:
     # https://github.com/solectrus/postgres-s3-backup — the tag must match the

@@ -1,0 +1,19 @@
+# The build context is the repo root, so everything not needed by an image
+# is excluded here — above all host node_modules (Windows-built, and huge)
+# and any .env file carrying real secrets.
+
+**/node_modules
+**/dist
+**/build
+**/.react-router
+**/coverage
+**/*.log
+
+**/.env
+**/.env.*
+!**/.env.example
+
+.git
+.github
+.claude
+docs
