@@ -1,4 +1,6 @@
 ﻿import { describe, expect, it } from "bun:test";
+import { S3Client } from "bun";
+import { UploadService } from "../src/modules/upload/upload.service";
 import { createBetterAuthTest } from "./helpers/auth-test-utils";
 import { createTestClient } from "./helpers/test-client";
 
@@ -36,7 +38,17 @@ describe("Better-Auth Test Utils - Integration Tests", () => {
 		const headers = await test.getAuthHeaders({ userId: student.id });
 		expect(headers.get("cookie")).toBeDefined();
 
-		const client = createTestClient({ auth });
+		// Presigning needs credentials but no network, so a fake bucket will do.
+		const upload = new UploadService(
+			new S3Client({
+				endpoint: "https://acct.r2.cloudflarestorage.com",
+				region: "auto",
+				bucket: "media",
+				accessKeyId: "test-key",
+				secretAccessKey: "test-secret",
+			}),
+		);
+		const client = createTestClient({ auth, upload });
 		const presignRes = await client.api.upload.presign.$post(
 			{ json: { contentType: "image/webp", size: 1234 } },
 			{ headers: { cookie: headers.get("cookie") as string } },

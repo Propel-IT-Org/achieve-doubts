@@ -15,6 +15,7 @@ import { type ApiErrorBody, codeForStatus, toErrorBody } from "./lib/errors";
 import { type AppContainer, type AppEnv, container } from "./lib/di";
 import { isDraining } from "./lib/lifecycle";
 import { requireAuth, requirePermission } from "./middleware/auth";
+import { requireOwnMedia } from "./middleware/media-urls";
 import { createRateLimiter, sessionOrIpKey } from "./middleware/rate-limit";
 import { adminRouter } from "./modules/admin/admin.router";
 import { authRouter } from "./modules/auth/auth.router";
@@ -27,7 +28,6 @@ import { questionsRouter } from "./modules/questions/questions.router";
 import { reportsRouter } from "./modules/reports/reports.router";
 import { taxonomyRouter } from "./modules/taxonomy/taxonomy.router";
 import { uploadRouter } from "./modules/upload/upload.router";
-import { LOCAL_UPLOAD_ROUTE } from "./modules/upload/upload.util";
 import { getServer, websocket } from "./ws/hub";
 
 export function createApp(customContainer: AppContainer = container) {
@@ -36,10 +36,11 @@ export function createApp(customContainer: AppContainer = container) {
   app.use("*", requestId());
   app.use("*", logger());
   app.use("*", secureHeaders());
-  // Every route except the development upload stand-in only ever receives
-  // JSON, for which 5 MB is generous. That stand-in takes file bodies and
-  // enforces its own limit (upload.router.ts), so it is skipped here.
-  const jsonBodyLimit = bodyLimit({
+  app.use(
+    "*",
+    bodyLimit({
+      // Every route receives JSON only — files go straight to the bucket —
+      // so 5 MB is generous.
       maxSize: 5 * 1024 * 1024,
       onError: (c) =>
         c.json(
@@ -49,11 +50,7 @@ export function createApp(customContainer: AppContainer = container) {
           } satisfies ApiErrorBody,
           413,
         ),
-  });
-  app.use("*", (c, next) =>
-    c.req.path.startsWith(`${LOCAL_UPLOAD_ROUTE}/`)
-      ? next()
-      : jsonBodyLimit(c, next),
+    }),
   );
   app.use(
     "*",
@@ -127,6 +124,12 @@ export function createApp(customContainer: AppContainer = container) {
         return _root.createScope({ ws: wsServer as never });
       },
     }),
+  );
+
+  // Attachment URLs must be the caller's own uploads, on every route. Not on
+  // /api/auth: better-auth needs the raw body this would consume.
+  app.use("/api/*", (c, next) =>
+    c.req.path.startsWith("/api/auth/") ? next() : requireOwnMedia(c, next),
   );
 
   // Root error handling. Every failure that escapes a handler — thrown

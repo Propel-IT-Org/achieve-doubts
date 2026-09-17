@@ -3,7 +3,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import type { AppEnv } from "../../lib/di";
 import { requireAuth, requirePermission } from "../../middleware/auth";
-import { checkMediaUrls, parseIdParam, zodErrorHook } from "./shared";
+import { parseIdParam, zodErrorHook } from "./shared";
 import { createSolutionSchema, ratingSchema } from "./solutions.schema";
 
 /** Roles allowed to delete someone else's solution, not just their own. */
@@ -22,8 +22,6 @@ export const solutionsRouter = new Hono<AppEnv>()
       if (!questionId) return fail(c, 400, "VALIDATION_FAILED", "Invalid question id");
 
       const input = c.req.valid("json");
-      const mediaError = checkMediaUrls(c.var.user.id, input);
-      if (mediaError) return fail(c, 400, "VALIDATION_FAILED", mediaError);
 
       const result = await c.var.di
         .get("solutions")

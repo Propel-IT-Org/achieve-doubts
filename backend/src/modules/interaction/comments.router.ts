@@ -4,7 +4,7 @@ import { Hono } from "hono";
 import type { AppEnv } from "../../lib/di";
 import { requireAuth, requirePermission } from "../../middleware/auth";
 import { createCommentSchema } from "./comments.schema";
-import { checkMediaUrls, parseIdParam, zodErrorHook } from "./shared";
+import { parseIdParam, zodErrorHook } from "./shared";
 
 export const commentsRouter = new Hono<AppEnv>()
   // Public: guests can read the discussion even though they can't post.
@@ -28,8 +28,6 @@ export const commentsRouter = new Hono<AppEnv>()
       if (!questionId) return fail(c, 400, "VALIDATION_FAILED", "Invalid question id");
 
       const input = c.req.valid("json");
-      const mediaError = checkMediaUrls(c.var.user.id, input);
-      if (mediaError) return fail(c, 400, "VALIDATION_FAILED", mediaError);
 
       const result = await c.var.di
         .get("comments")

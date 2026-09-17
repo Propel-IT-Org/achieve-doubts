@@ -8,8 +8,7 @@
  * and that is what a student on mobile data actually sends.
  *
  * Uploads go straight from the browser to object storage through a presigned
- * URL, so this is the only place an image is compressed. The server checks
- * the stored file's size and type when it is attached to a post.
+ * URL, so this is the only place an image is compressed.
  *
  * Re-encoding also discards EXIF metadata, which on phone photos often
  * includes the GPS position where the picture was taken.

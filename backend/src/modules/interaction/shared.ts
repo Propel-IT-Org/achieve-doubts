@@ -1,5 +1,4 @@
 import type { Context } from "hono";
-import { checkAttachmentUrl } from "../upload/upload.util";
 
 /** Shape shared by the solution/thread/comment "add media" request bodies. */
 export type MediaInput = {
@@ -14,21 +13,6 @@ export type MediaInput = {
  */
 export function hasAtLeastOneMediaField(data: MediaInput): boolean {
   return Boolean(data.text || data.imageUrl || data.audioUrl);
-}
-
-/**
- * Checks each attachment URL on a solution, follow-up or comment — see
- * {@link checkAttachmentUrl}. Returns a message to show the user, or null.
- */
-export function checkMediaUrls(
-  posterId: string,
-  input: MediaInput,
-): string | null {
-  return (
-    (input.imageUrl && checkAttachmentUrl(input.imageUrl, posterId, "image")) ||
-    (input.audioUrl && checkAttachmentUrl(input.audioUrl, posterId, "audio")) ||
-    null
-  );
 }
 
 /**

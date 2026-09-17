@@ -9,7 +9,6 @@ import {
   requirePermission,
 } from "../../middleware/auth";
 import { upgradeWebSocket } from "../../ws/hub";
-import { checkAttachmentUrl } from "../upload/upload.util";
 import {
   createQuestionSchema,
   listQuestionsQuerySchema,
@@ -43,14 +42,6 @@ export const questionsRouter = new Hono<AppEnv>()
     zValidator("json", createQuestionSchema, zodErrorHook),
     async (c) => {
       const input = c.req.valid("json");
-
-      // The photo must be one of the asker's own uploads.
-      const photoProblem =
-        input.photoUrl &&
-        checkAttachmentUrl(input.photoUrl, c.var.user.id, "image");
-      if (photoProblem) {
-        return fail(c, 400, "VALIDATION_FAILED", photoProblem);
-      }
 
       const result = await c.var.di
         .get("questions")
