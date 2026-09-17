@@ -11,7 +11,13 @@ export class UploadService {
 		);
 		this.s3Client = hasS3Config
 			? new S3Client({
-					region: "auto",
+					region: env.S3_REGION,
+					// Since @aws-sdk/client-s3 3.729 the SDK adds CRC32 checksum
+					// parameters to presigned URLs by default. The browser's PUT
+					// never sends a matching checksum, so R2 and B2 reject the
+					// upload. Only compute checksums where an operation requires one.
+					requestChecksumCalculation: "WHEN_REQUIRED",
+					responseChecksumValidation: "WHEN_REQUIRED",
 					endpoint: env.S3_ENDPOINT,
 					credentials: {
 						accessKeyId: env.S3_ACCESS_KEY_ID!,

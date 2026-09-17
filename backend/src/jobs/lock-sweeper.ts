@@ -4,42 +4,51 @@ import { lockEvents, notifications, questions } from "../db/schema";
 import type { FeedHub } from "../ws/hub";
 
 /**
- * Returns expired locks to the open feed.
- *
- * Without this, an abandoned lock is invisible: the question stays
- * `assigned` (so it never appears in the default `waiting` feed) while the
- * lock predicate treats it as reclaimable — meaning nobody can find the
- * question they are allowed to take.
- */
-/**
  * Arbitrary constant identifying the sweep lock. Advisory locks share one
  * global key space, so this must not collide with another advisory lock —
  * questions.service.ts keys its per-solver lock on hashtext(solverId).
  */
 const SWEEP_LOCK_KEY = 4_820_119;
 
+/**
+ * Returns expired locks to the open feed.
+ *
+ * Without this, an abandoned lock is invisible: the question stays
+ * `assigned` (so it never appears in the `waiting` feed) while the lock
+ * predicate treats it as reclaimable — meaning nobody can find the question
+ * they are allowed to take.
+ *
+ * With several replicas every instance runs this timer. Concurrent sweeps are
+ * not incorrect — the UPDATE is atomic, so a given row is returned to exactly
+ * one instance — but they are wasted work, so only one instance sweeps per
+ * tick and the rest return immediately.
+ *
+ * The lock is TRANSACTION-scoped on purpose. The database client is a
+ * connection pool, so a session-level lock and its unlock can land on
+ * different connections: the unlock silently fails, the lock stays held by an
+ * idle pooled connection, and no instance ever sweeps again. An xact lock is
+ * taken and released on the one connection the transaction owns.
+ */
 export async function sweepExpiredLocks(db: DB, feed?: FeedHub) {
-  // With several replicas every instance runs this timer. Concurrent sweeps
-  // are not incorrect — the UPDATE is atomic, so a given row is returned to
-  // exactly one instance and notifications can't be duplicated — but they are
-  // wasted work. A session-level try-lock means one instance sweeps and the
-  // rest return immediately instead of queueing.
-  const lockRows = (await db.execute(
-    sql`select pg_try_advisory_lock(${SWEEP_LOCK_KEY}) as ok`,
-  )) as unknown as Array<{ ok: boolean }>;
+  const expiredIds = await db.transaction(async (tx) => {
+    const lockRows = (await tx.execute(
+      sql`select pg_try_advisory_xact_lock(${SWEEP_LOCK_KEY}) as ok`,
+    )) as unknown as Array<{ ok: boolean }>;
 
-  if (!lockRows[0]?.ok) return 0;
+    if (!lockRows[0]?.ok) return [];
+    return runSweep(tx as unknown as DB);
+  });
 
-  try {
-    return await runSweep(db, feed);
-  } finally {
-    // Session-scoped, so it must be released explicitly — unlike the
-    // transaction-scoped lock used for the follow-up check.
-    await db.execute(sql`select pg_advisory_unlock(${SWEEP_LOCK_KEY})`);
+  // Broadcast only after COMMIT. Announcing from inside the transaction would
+  // let a client refetch before the change is visible and see the old state.
+  for (const questionId of expiredIds) {
+    feed?.broadcast("QUESTION_EXPIRED", { questionId });
   }
+
+  return expiredIds.length;
 }
 
-async function runSweep(db: DB, feed?: FeedHub) {
+async function runSweep(db: DB): Promise<number[]> {
   const expired = await db
     .update(questions)
     .set({
@@ -56,11 +65,7 @@ async function runSweep(db: DB, feed?: FeedHub) {
         lt(questions.lockExpiresAt, sql`now()`),
       ),
     )
-    .returning({
-      id: questions.id,
-      askerId: questions.askerId,
-      solverId: questions.solverId,
-    });
+    .returning({ id: questions.id, askerId: questions.askerId });
 
   for (const row of expired) {
     // `returning()` gives the post-update row, so solverId is already null —
@@ -93,11 +98,9 @@ async function runSweep(db: DB, feed?: FeedHub) {
       type: "released",
       questionId: row.id,
     });
-
-    feed?.broadcast("QUESTION_EXPIRED", { questionId: row.id });
   }
 
-  return expired.length;
+  return expired.map((row) => row.id);
 }
 
 /**

@@ -1,3 +1,8 @@
+-- idx_questions_text_trgm below uses gin_trgm_ops, which only exists once
+-- pg_trgm is installed. drizzle-kit can't express extensions, so this line
+-- was added by hand. pg_trgm is a trusted extension (PG13+), so the database
+-- owner can create it without superuser.
+CREATE EXTENSION IF NOT EXISTS pg_trgm;--> statement-breakpoint
 DROP INDEX "idx_notifications_user_read";--> statement-breakpoint
 CREATE INDEX "idx_questions_text_trgm" ON "questions" USING gin ("text" gin_trgm_ops);--> statement-breakpoint
 CREATE INDEX "idx_questions_answered_at" ON "questions" USING btree ("answered_at") WHERE "questions"."answered_at" is not null;--> statement-breakpoint

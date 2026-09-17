@@ -1,40 +1,45 @@
+import { env } from "../env";
+
 /**
- * Client IP extraction for requests arriving through a reverse proxy.
+ * Client IP for rate limiting and the Achieve SSO allowlist.
  *
- * `X-Forwarded-For` is a client-*appendable* list. A proxy appends the peer
- * address it actually observed, so behind one proxy the header reads
- * `<whatever the caller sent>, <real client>`. Reading the FIRST entry
- * therefore reads attacker-controlled input: a caller can send their own
- * `X-Forwarded-For` and choose what the server believes their address is.
+ * Where the real address lives depends on what sits in front of the app,
+ * selected by CLIENT_IP_SOURCE:
  *
- * That matters here twice over — the value keys the rate limiter, and it
- * gates the Achieve SSO IP allowlist. Taking the last entry instead yields
- * the address our own proxy saw, which a client cannot forge.
+ * "proxy" (default) — DNS points straight at the VPS and Traefik is the only
+ *   hop. Traefik DELETES any X-Forwarded-For arriving from an untrusted peer
+ *   and replaces it with the peer's own address, so the header reaching us is
+ *   the address Traefik actually saw. We still read the rightmost entry as
+ *   defence in depth: a proxy only ever appends.
  *
- * ASSUMPTION: exactly one trusted proxy (Traefik) in front of the app. Put
- * another hop in front — Cloudflare, a load balancer — and the trustworthy
- * entry moves left by one per hop, so this needs revisiting alongside that
- * change. `TRUSTED_PROXY_HOPS` exists to make that adjustment explicit.
+ * "cloudflare" — traffic arrives through Cloudflare (a Tunnel, or proxied
+ *   DNS). Here Traefik's peer is `cloudflared` or a Cloudflare edge node, so
+ *   X-Forwarded-For would put every user in one bucket — and the Achieve
+ *   allowlist would reject Achieve itself. Cloudflare's edge overwrites
+ *   CF-Connecting-IP with the true client address, so that is the source.
+ *
+ *   ONLY SAFE when the origin is reachable exclusively through Cloudflare: a
+ *   Tunnel with no published ports, or a firewall that admits only
+ *   Cloudflare's IP ranges. Otherwise anyone can reach the VPS directly and
+ *   forge CF-Connecting-IP — including an allowlisted Achieve address.
  */
-
-const TRUSTED_PROXY_HOPS = 1;
-
 export function clientIpFromHeaders(headers: Headers): string {
-  const forwarded = headers.get("x-forwarded-for");
+  if (env.CLIENT_IP_SOURCE === "cloudflare") {
+    const viaCloudflare = headers.get("cf-connecting-ip")?.trim();
+    if (viaCloudflare) return viaCloudflare;
+  }
 
+  const forwarded = headers.get("x-forwarded-for");
   if (forwarded) {
     const hops = forwarded
       .split(",")
       .map((value) => value.trim())
       .filter(Boolean);
-
-    // Count back from the right: the rightmost entry was written by the proxy
-    // closest to us, and is the only one we can vouch for.
-    const trusted = hops[hops.length - TRUSTED_PROXY_HOPS];
-    if (trusted) return trusted;
+    const nearest = hops[hops.length - 1];
+    if (nearest) return nearest;
   }
 
-  // Set by the edge itself rather than forwarded through, so these are only
-  // as trustworthy as the proxy that set them.
-  return headers.get("cf-connecting-ip") ?? headers.get("x-real-ip") ?? "unknown";
+  // Deliberately NOT falling back to CF-Connecting-IP in proxy mode: without
+  // Cloudflare in front, that header is just caller-supplied text.
+  return headers.get("x-real-ip") ?? "unknown";
 }

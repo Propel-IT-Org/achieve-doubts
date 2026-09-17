@@ -24,6 +24,11 @@ const envSchema = z.object({
 	// instance — without it each replica keeps its own rate-limit counters and
 	// clients connected to one replica never see events published by another.
 	REDIS_URL: z.string().optional(),
+	// Where the real client address comes from — see lib/client-ip.ts.
+	//   proxy      — DNS points straight at the VPS; Traefik is the only hop.
+	//   cloudflare — traffic arrives via Cloudflare (Tunnel, or proxied DNS
+	//                with the firewall restricted to Cloudflare's ranges).
+	CLIENT_IP_SOURCE: z.enum(["proxy", "cloudflare"]).default("proxy"),
 	ATTESTATION_SECRET: secret("dev_attestation_secret_placeholder", 16),
 	// Server-to-server shared secret for the Achieve integration handshake (X-Achieve-Auth header).
 	ACHIEVE_SHARED_SECRET: secret("dev_achieve_shared_secret_placeholder_change_me", 32),
@@ -31,6 +36,9 @@ const envSchema = z.object({
 	ACHIEVE_ALLOWED_IPS: z.string().optional(),
 	LOCK_TIMEOUT_MINUTES: z.coerce.number().default(15),
 	S3_ENDPOINT: z.string().optional(),
+	// R2 accepts "auto". Backblaze B2 needs the bucket's real region (e.g.
+	// "us-west-004"), or SigV4 signatures won't match.
+	S3_REGION: z.string().default("auto"),
 	S3_ACCESS_KEY_ID: z.string().optional(),
 	S3_SECRET_ACCESS_KEY: z.string().optional(),
 	S3_BUCKET_NAME: z.string().default("doubts-media"),
