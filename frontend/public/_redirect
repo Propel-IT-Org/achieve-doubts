@@ -1,5 +1,0 @@
-# Return a clean 404 for missing static assets
-/assets/*  /assets/:splat  404
-
-# SPA fallback for all other routes
-/*  /__spa-fallback.html  200
