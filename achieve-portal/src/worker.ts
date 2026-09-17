@@ -54,8 +54,11 @@ export default {
  * Open /probe?code=<PORTAL_ACCESS_CODE>.
  */
 async function probe(url: URL, env: Env): Promise<Response> {
-  if (!(await sameSecret(url.searchParams.get("code") ?? "", env.PORTAL_ACCESS_CODE))) {
+  if (!(await sameSecret(url.searchParams.get("code") ?? "", env.PORTAL_ACCESS_CODE ?? ""))) {
     return new Response("Wrong access code", { status: 403 });
+  }
+  if (!env.DOUBTS_API_URL) {
+    return Response.json({ error: "DOUBTS_API_URL is not set" }, { status: 500 });
   }
 
   const api = new URL(env.DOUBTS_API_URL);
@@ -94,7 +97,17 @@ async function probe(url: URL, env: Env): Promise<Response> {
 }
 
 async function startDoubtSolve(request: Request, env: Env): Promise<Response> {
-  if (!env.ACHIEVE_SHARED_SECRET || !env.PORTAL_ACCESS_CODE) {
+  if (!env.ACHIEVE_SHARED_SECRET || !env.PORTAL_ACCESS_CODE || !env.DOUBTS_API_URL) {
+    console.error(
+      "[portal] missing settings:",
+      [
+        !env.DOUBTS_API_URL && "DOUBTS_API_URL",
+        !env.ACHIEVE_SHARED_SECRET && "ACHIEVE_SHARED_SECRET",
+        !env.PORTAL_ACCESS_CODE && "PORTAL_ACCESS_CODE",
+      ]
+        .filter(Boolean)
+        .join(", "),
+    );
     return backToPortal(request, "PORTAL_NOT_CONFIGURED");
   }
 

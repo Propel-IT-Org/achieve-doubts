@@ -5,7 +5,7 @@ const FIELDS = ["name", "email", "phone", "institution", "batch", "accessCode"];
 const ERRORS = {
   WRONG_ACCESS_CODE: "That portal access code is wrong.",
   PORTAL_NOT_CONFIGURED:
-    "The portal is missing ACHIEVE_SHARED_SECRET or PORTAL_ACCESS_CODE.",
+    "The portal is missing DOUBTS_API_URL, ACHIEVE_SHARED_SECRET or PORTAL_ACCESS_CODE. The worker log names which.",
   API_UNREACHABLE: "The Doubts API couldn't be reached.",
   BAD_REDIRECT: "The Doubts API sent back an unexpected redirect.",
   BLOCKED_BEFORE_API:

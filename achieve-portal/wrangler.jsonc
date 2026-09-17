@@ -10,11 +10,13 @@
   // (POST /doubt-solve) reaches the worker.
   "assets": { "directory": "./public" },
   "observability": { "enabled": true },
-  "vars": {
-    // The Doubts backend. Its BETTER_AUTH_URL must be this same origin.
-    "DOUBTS_API_URL": "http://localhost:3000"
-  }
-  // Secrets — `.dev.vars` locally, `wrangler secret put` when deployed:
-  //   ACHIEVE_SHARED_SECRET  the backend's ACHIEVE_SHARED_SECRET
-  //   PORTAL_ACCESS_CODE     required to use this portal at all
+  // A deploy would otherwise replace the dashboard's variables with whatever
+  // this file lists — which is how DOUBTS_API_URL got reset to localhost.
+  "keep_vars": true,
+  // Settings live in the dashboard (Settings > Variables and Secrets), and in
+  // `.dev.vars` for `bun run dev`:
+  //   DOUBTS_API_URL         the Doubts backend's origin, which must match
+  //                          its BETTER_AUTH_URL (a plain variable)
+  //   ACHIEVE_SHARED_SECRET  the backend's ACHIEVE_SHARED_SECRET (secret)
+  //   PORTAL_ACCESS_CODE     required to use this portal at all (secret)
 }

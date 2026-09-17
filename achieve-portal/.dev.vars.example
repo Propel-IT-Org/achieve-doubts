@@ -1,3 +1,5 @@
 # Copy to .dev.vars (git-ignored) for `bun run dev`.
+# Deployed, these live in the dashboard: Settings > Variables and Secrets.
+DOUBTS_API_URL=http://localhost:3000
 ACHIEVE_SHARED_SECRET=dev_achieve_shared_secret_placeholder_change_me
 PORTAL_ACCESS_CODE=change-me
