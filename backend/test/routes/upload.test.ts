@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { S3Client } from "bun";
+import { S3Client } from "@aws-sdk/client-s3";
 import { UploadService } from "../../src/modules/upload/upload.service";
 import { createMockAuth } from "../helpers/mock-auth";
 import { createTestClient } from "../helpers/test-client";
@@ -8,13 +8,7 @@ const student = createMockAuth({ id: "student-u1", role: "student" });
 
 // Presigning needs credentials but no network, so a fake bucket will do.
 const upload = new UploadService(
-  new S3Client({
-    endpoint: "https://acct.r2.cloudflarestorage.com",
-    region: "auto",
-    bucket: "media",
-    accessKeyId: "test-key",
-    secretAccessKey: "test-secret",
-  }),
+  new S3Client({ endpoint: "https://acct.r2.cloudflarestorage.com", region: "auto", credentials: { accessKeyId: "test-key", secretAccessKey: "test-secret" } }),
 );
 
 describe("API Route: POST /api/upload/presign", () => {
@@ -39,7 +33,7 @@ describe("API Route: POST /api/upload/presign", () => {
       publicUrl: string;
       headers: Record<string, string>;
     };
-    expect(new URL(body.uploadUrl).pathname).toStartWith("/media/uploads/student-u1/");
+    expect(new URL(body.uploadUrl).pathname).toContain("/uploads/student-u1/");
     expect(body.publicUrl).toEndWith(".webp");
     expect(body.headers["content-type"]).toBe("image/webp");
   });

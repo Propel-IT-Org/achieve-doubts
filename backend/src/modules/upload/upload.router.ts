@@ -10,8 +10,7 @@ import { UPLOAD_TYPE_NAMES, UPLOAD_TYPES } from "./upload.util";
 const presignSchema = z
   .object({
     contentType: z.enum(UPLOAD_TYPE_NAMES),
-    // The URL can't enforce this, but checking it refuses an oversized file
-    // before the browser starts sending it.
+    // Signed into the URL: the bucket accepts a body of exactly this size.
     size: z.number().int().positive(),
   })
   .refine((value) => value.size <= UPLOAD_TYPES[value.contentType].maxBytes, {
@@ -19,7 +18,7 @@ const presignSchema = z
     message: "Images must be 200 KB or smaller, and voice notes 3 MB",
   });
 
-// Each URL can accept a large body, so issuing them is rate limited.
+// Abuse control: each URL still lets a user write an object to the bucket.
 const presignRateLimit = createRateLimiter({
   prefix: "rl:presign",
   windowMs: 60_000,
@@ -32,10 +31,10 @@ export const uploadRouter = new Hono<AppEnv>().post(
   requireAuth,
   presignRateLimit,
   zValidator("json", presignSchema, zodErrorHook),
-  (c) => {
-    const { contentType } = c.req.valid("json");
+  async (c) => {
+    const { contentType, size } = c.req.valid("json");
     return c.json(
-      c.var.di.get("upload").presign(contentType, c.var.user.id),
+      await c.var.di.get("upload").presign(contentType, size, c.var.user.id),
     );
   },
 );
