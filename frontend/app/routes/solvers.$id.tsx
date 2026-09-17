@@ -9,7 +9,6 @@ import {
   fetchSubjects,
   solverProfileKey,
   subjectsKey,
-  swrConfig,
 } from "~/lib/queries";
 import { dur, fmt, formatDate, pct } from "~/lib/format";
 import { Avatar } from "~/components/primitives";
@@ -27,17 +26,20 @@ export async function clientLoader({ params }: Route.ClientLoaderArgs) {
 
 export default function SolverProfilePage() {
   const { id = "" } = useParams();
-  const { data } = useSWR(
-    solverProfileKey(id),
-    () => fetchSolverProfile(id),
-    swrConfig,
+  const { data } = useSWR(solverProfileKey(id), () => fetchSolverProfile(id));
+  const { data: subjects } = useSWR(subjectsKey(), fetchSubjects);
+  const taxonomy = useMemo(
+    () => buildTaxonomyLookup(subjects ?? []),
+    [subjects],
   );
-  const { data: subjects } = useSWR(subjectsKey(), fetchSubjects, swrConfig);
-  const taxonomy = useMemo(() => buildTaxonomyLookup(subjects ?? []), [subjects]);
 
   if (!data) return null;
 
-  const creds = [data.institution, data.dept, data.batch ? `'${data.batch}` : null]
+  const creds = [
+    data.institution,
+    data.dept,
+    data.batch ? `'${data.batch}` : null,
+  ]
     .filter(Boolean)
     .join(" ");
 
@@ -83,7 +85,12 @@ export default function SolverProfilePage() {
         {data.recentlySolved?.length ? (
           <div className="cards" style={{ marginTop: 16 }}>
             {data.recentlySolved.map((q) => (
-              <QuestionCard key={q.id} question={q} taxonomy={taxonomy} compact />
+              <QuestionCard
+                key={q.id}
+                question={q}
+                taxonomy={taxonomy}
+                compact
+              />
             ))}
           </div>
         ) : (

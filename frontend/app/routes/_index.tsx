@@ -11,7 +11,6 @@ import {
   homeStatsKey,
   questionsKey,
   subjectsKey,
-  swrConfig,
 } from "~/lib/queries";
 import { clock, dur, fmt, pct } from "~/lib/format";
 import { useSession } from "~/lib/session";
@@ -122,12 +121,10 @@ function BigTrace() {
 }
 
 function HeroCard() {
-  const { data } = useSWR(
-    questionsKey(HERO_FILTERS),
-    () => fetchQuestions(HERO_FILTERS),
-    swrConfig,
+  const { data } = useSWR(questionsKey(HERO_FILTERS), () =>
+    fetchQuestions(HERO_FILTERS),
   );
-  const { data: subjects } = useSWR(subjectsKey(), fetchSubjects, swrConfig);
+  const { data: subjects } = useSWR(subjectsKey(), fetchSubjects);
 
   const [idx, setIdx] = useState(1);
   const [playing, setPlaying] = useState(() => !prefersReducedMotion());
@@ -169,7 +166,7 @@ function HeroCard() {
 }
 
 function StatsBand() {
-  const { data } = useSWR(homeStatsKey(), fetchHomeStats, swrConfig);
+  const { data } = useSWR(homeStatsKey(), fetchHomeStats);
   if (!data) return null;
 
   return (
@@ -186,7 +183,9 @@ function StatsBand() {
                 ? `${Math.round(data.medianMatchSeconds)} s`
                 : "–"}
             </div>
-            <div className="l">typical wait until a solver takes your question</div>
+            <div className="l">
+              typical wait until a solver takes your question
+            </div>
           </div>
           <div className="stat">
             <div className="v">{dur(data.medianAnswerMinutes)}</div>
@@ -203,7 +202,7 @@ function StatsBand() {
 }
 
 function OnlineCount() {
-  const { data } = useSWR(homeStatsKey(), fetchHomeStats, swrConfig);
+  const { data } = useSWR(homeStatsKey(), fetchHomeStats);
   return (
     <div className="online">
       <i aria-hidden="true" />
@@ -257,16 +256,23 @@ export default function Home() {
           <h2 className="h2" id="how-h">
             How a question moves
           </h2>
-          <p className="muted" style={{ margin: 0, maxWidth: "40em", fontSize: 17 }}>
-            Every question follows the same four steps, and you can see which one
-            yours has reached.
+          <p
+            className="muted"
+            style={{ margin: 0, maxWidth: "40em", fontSize: 17 }}
+          >
+            Every question follows the same four steps, and you can see which
+            one yours has reached.
           </p>
           <BigTrace />
           <div className="steps4">
             {STEPS.map(([heading, body]) => (
               <div className="step" key={heading}>
                 <h3>
-                  <svg className="step-star" viewBox="-8 -8 16 16" aria-hidden="true">
+                  <svg
+                    className="step-star"
+                    viewBox="-8 -8 16 16"
+                    aria-hidden="true"
+                  >
                     <title>{heading}</title>
                     <use href="#acs-star" />
                   </svg>

@@ -26,7 +26,6 @@ import {
   fetchThread,
   questionKey,
   subjectsKey,
-  swrConfig,
   threadKey,
 } from "~/lib/queries";
 import {
@@ -43,7 +42,13 @@ import {
 } from "~/lib/mutations";
 import { ago, clock, dur, shortName } from "~/lib/format";
 import { isAdminSolver, isSolver, useSession } from "~/lib/session";
-import { Attachments, Avatar, Gate, StatusPill, Trace } from "~/components/primitives";
+import {
+  Attachments,
+  Avatar,
+  Gate,
+  StatusPill,
+  Trace,
+} from "~/components/primitives";
 import { buildTaxonomyLookup } from "~/components/question-card";
 import { useToast } from "~/components/toast";
 
@@ -75,9 +80,12 @@ export default function QuestionDetail() {
   const flash = useToast();
   const navigate = useNavigate();
 
-  const { data: question } = useSWR(questionKey(id), () => fetchQuestion(id), swrConfig);
-  const { data: subjects } = useSWR(subjectsKey(), fetchSubjects, swrConfig);
-  const taxonomy = useMemo(() => buildTaxonomyLookup(subjects ?? []), [subjects]);
+  const { data: question } = useSWR(questionKey(id), () => fetchQuestion(id));
+  const { data: subjects } = useSWR(subjectsKey(), fetchSubjects);
+  const taxonomy = useMemo(
+    () => buildTaxonomyLookup(subjects ?? []),
+    [subjects],
+  );
 
   const lock = useLockQuestion();
   const unlock = useUnlockQuestion();
@@ -184,7 +192,10 @@ export default function QuestionDetail() {
                 {question.asker && (
                   <span>
                     Asked by{" "}
-                    <Link className="linkish" to={`/students/${question.asker.id}`}>
+                    <Link
+                      className="linkish"
+                      to={`/students/${question.asker.id}`}
+                    >
                       {shortName(question.asker.name)}
                     </Link>
                   </span>
@@ -231,7 +242,11 @@ export default function QuestionDetail() {
             <div className="d-actions">
               {isSolver(user?.role) && (
                 <section className="panel solve-box" aria-labelledby="solve-h">
-                  <h2 className="h3" id="solve-h" style={{ fontSize: 20, margin: 0 }}>
+                  <h2
+                    className="h3"
+                    id="solve-h"
+                    style={{ fontSize: 20, margin: 0 }}
+                  >
                     Solve this question
                   </h2>
 
@@ -260,9 +275,14 @@ export default function QuestionDetail() {
                       </>
                     ) : mine && !solution ? (
                       confirmUnlock ? (
-                        <div className="confirm" role="alertdialog" aria-label="Unlock this question?">
+                        <div
+                          className="confirm"
+                          role="alertdialog"
+                          aria-label="Unlock this question?"
+                        >
                           <span style={{ flex: 1, minWidth: 180 }}>
-                            Unlock this question? Any solver will be able to lock it.
+                            Unlock this question? Any solver will be able to
+                            lock it.
                           </span>
                           <button
                             type="button"
@@ -293,7 +313,9 @@ export default function QuestionDetail() {
                               <Lock size={12} />
                               Locked by you
                             </span>
-                            <span>You can unlock until you submit the solution.</span>
+                            <span>
+                              You can unlock until you submit the solution.
+                            </span>
                           </span>
                           <span className="lb-actions">
                             <button
@@ -307,14 +329,27 @@ export default function QuestionDetail() {
                           </span>
                         </>
                       )
-                    ) : question.status === "assigned" && !mine && isAdminSolver(user?.role) ? (
+                    ) : question.status === "assigned" &&
+                      !mine &&
+                      isAdminSolver(user?.role) ? (
                       <>
                         <span className="lb-note">
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
+                            }}
+                          >
                             <Lock size={14} />
-                            Locked by {shortName(question.solver?.name ?? "another solver")}
+                            Locked by{" "}
+                            {shortName(
+                              question.solver?.name ?? "another solver",
+                            )}
                           </span>
-                          <span>As an admin solver you can take this lock over.</span>
+                          <span>
+                            As an admin solver you can take this lock over.
+                          </span>
                         </span>
                         <span className="lb-actions">
                           <button
@@ -345,21 +380,34 @@ export default function QuestionDetail() {
               )}
 
               {isAdminSolver(user?.role) && (
-                <section className="panel solve-box tools" aria-labelledby="tools-h">
+                <section
+                  className="panel solve-box tools"
+                  aria-labelledby="tools-h"
+                >
                   <h2
                     className="h3"
                     id="tools-h"
-                    style={{ fontSize: 20, margin: 0, display: "flex", alignItems: "center", gap: 8 }}
+                    style={{
+                      fontSize: 20,
+                      margin: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
                   >
                     <Shield size={18} aria-hidden="true" />
                     Admin solver tools
                   </h2>
                   <p className="muted" style={{ margin: 0, fontSize: 14 }}>
-                    You can delete this question, delete any solution, follow-up or
-                    comment, and take over locks held by other solvers.
+                    You can delete this question, delete any solution, follow-up
+                    or comment, and take over locks held by other solvers.
                   </p>
                   {confirmDelete ? (
-                    <div className="confirm" role="alertdialog" aria-label="Delete this question?">
+                    <div
+                      className="confirm"
+                      role="alertdialog"
+                      aria-label="Delete this question?"
+                    >
                       <span style={{ flexBasis: "100%" }}>
                         Delete this question for everyone? This can't be undone.
                       </span>
@@ -416,7 +464,11 @@ function SolutionSection({
   canModerate,
 }: {
   questionId: number;
-  question: { status: string; solution?: unknown; solver?: { id: string; name: string } | null };
+  question: {
+    status: string;
+    solution?: unknown;
+    solver?: { id: string; name: string } | null;
+  };
   loggedIn: boolean;
   isAssignedSolver: boolean;
   canModerate: boolean;
@@ -429,7 +481,13 @@ function SolutionSection({
   const [confirming, setConfirming] = useState(false);
 
   const solution = question.solution as
-    | { text: string | null; imageUrl: string | null; audioUrl: string | null; audioSeconds: number | null; createdAt: string }
+    | {
+        text: string | null;
+        imageUrl: string | null;
+        audioUrl: string | null;
+        audioSeconds: number | null;
+        createdAt: string;
+      }
     | null
     | undefined;
 
@@ -449,9 +507,13 @@ function SolutionSection({
           <Lock size={22} aria-hidden="true" />
           <strong>Log in to see the solution</strong>
           <p className="muted" style={{ margin: 0, maxWidth: "32em" }}>
-            Solutions and follow-ups are visible to registered students and solvers.
+            Solutions and follow-ups are visible to registered students and
+            solvers.
           </p>
-          <div className="cta" style={{ justifyContent: "center", marginTop: 8 }}>
+          <div
+            className="cta"
+            style={{ justifyContent: "center", marginTop: 8 }}
+          >
             <Link className="btn btn-primary btn-sm" to="/login">
               Student login
             </Link>
@@ -470,7 +532,11 @@ function SolutionSection({
                   <b>{isAssignedSolver ? "You" : question.solver.name}</b>
                   <span className="muted">{ago(solution.createdAt)}</span>
                 </span>
-                <ChevronRight size={18} aria-hidden="true" className="sw-chev" />
+                <ChevronRight
+                  size={18}
+                  aria-hidden="true"
+                  className="sw-chev"
+                />
               </Link>
             )}
             {(canModerate || isAssignedSolver) && !confirming && (
@@ -487,7 +553,11 @@ function SolutionSection({
           </div>
 
           {confirming && (
-            <div className="confirm" role="alertdialog" aria-label="Delete this solution?">
+            <div
+              className="confirm"
+              role="alertdialog"
+              aria-label="Delete this solution?"
+            >
               <span style={{ flex: 1, minWidth: 220 }}>
                 Delete this solution? The rating and follow-ups are cleared.
               </span>
@@ -525,13 +595,17 @@ function SolutionSection({
           />
           {isAssignedSolver && (
             <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-              Solutions can't be edited. To change it, delete it and submit a new one.
+              Solutions can't be edited. To change it, delete it and submit a
+              new one.
             </p>
           )}
         </article>
       ) : question.status === "waiting" ? (
         <div className="panel" style={{ display: "grid", gap: 10 }}>
-          <p className="muted" style={{ margin: 0, display: "flex", gap: 8, alignItems: "center" }}>
+          <p
+            className="muted"
+            style={{ margin: 0, display: "flex", gap: 8, alignItems: "center" }}
+          >
             <Clock size={16} aria-hidden="true" />
             No solution yet. The question is open for any solver to lock.
           </p>
@@ -583,10 +657,13 @@ function SolutionSection({
         </div>
       ) : (
         <div className="panel">
-          <p className="muted" style={{ margin: 0, display: "flex", gap: 8, alignItems: "center" }}>
+          <p
+            className="muted"
+            style={{ margin: 0, display: "flex", gap: 8, alignItems: "center" }}
+          >
             <Clock size={16} aria-hidden="true" />
-            {shortName(question.solver?.name ?? "A solver")} locked this question and is
-            working on the solution.
+            {shortName(question.solver?.name ?? "A solver")} locked this
+            question and is working on the solution.
           </p>
         </div>
       )}
@@ -596,7 +673,13 @@ function SolutionSection({
 
 /* ---------- rating ---------- */
 
-function RatingSection({ questionId, status }: { questionId: number; status: string }) {
+function RatingSection({
+  questionId,
+  status,
+}: {
+  questionId: number;
+  status: string;
+}) {
   const rate = useRateQuestion(questionId);
   const flash = useToast();
 
@@ -615,8 +698,8 @@ function RatingSection({ questionId, status }: { questionId: number; status: str
         Did this answer clear your doubt?
       </h2>
       <p className="muted" style={{ margin: 0, fontSize: 15 }}>
-        Your rating is shown on the question and counts toward the solver's record.
-        You can change it later.
+        Your rating is shown on the question and counts toward the solver's
+        record. You can change it later.
       </p>
       <div className="rate">
         <button
@@ -680,8 +763,9 @@ function ThreadSection({
             Follow-up thread
           </h2>
           <p>
-            Follow-up conversation about the solution. Only {shortName(askerName)} and
-            the solver can post here; other students can read along.
+            Follow-up conversation about the solution. Only{" "}
+            {shortName(askerName)} and the solver can post here; other students
+            can read along.
           </p>
         </div>
       </div>
@@ -712,7 +796,9 @@ function ThreadSection({
                         ? shortName(solverName)
                         : shortName(askerName)}
                     </b>
-                    <span>{m.authorSide === "solver" ? "Solver" : "Asker"}</span>
+                    <span>
+                      {m.authorSide === "solver" ? "Solver" : "Asker"}
+                    </span>
                     <span>{ago(m.createdAt)}</span>
                   </div>
                   {m.deleted ? (
@@ -769,7 +855,8 @@ function ThreadSection({
           )}
           {hasSolution && !canPost && (
             <p className="muted" style={{ margin: "16px 0 0", fontSize: 14 }}>
-              You can read this thread. To join the discussion, use the comments below.
+              You can read this thread. To join the discussion, use the comments
+              below.
             </p>
           )}
         </div>
@@ -791,9 +878,13 @@ function CommentsSection({
   loggedIn: boolean;
   canModerate: boolean;
 }) {
-  const { data } = useSWR(commentsKey(questionId), () => fetchComments(questionId), {
-    revalidateOnFocus: false,
-  });
+  const { data } = useSWR(
+    commentsKey(questionId),
+    () => fetchComments(questionId),
+    {
+      revalidateOnFocus: false,
+    },
+  );
   const post = usePostComment(questionId);
   const flash = useToast();
   const [text, setText] = useState("");
@@ -928,7 +1019,9 @@ function ReportBox({ questionId }: { questionId: number }) {
       return;
     }
     if (text.trim().length < 10) {
-      setErr("Write at least 10 characters so the admins understand the problem.");
+      setErr(
+        "Write at least 10 characters so the admins understand the problem.",
+      );
       return;
     }
     try {
@@ -955,8 +1048,8 @@ function ReportBox({ questionId }: { questionId: number }) {
           Report a problem to the admins
         </h2>
         <p className="muted" style={{ margin: 0, fontSize: 15 }}>
-          If the solution is wrong or something else went wrong, tell the Achieve
-          Doubts admins. Only admins see reports.
+          If the solution is wrong or something else went wrong, tell the
+          Achieve Doubts admins. Only admins see reports.
         </p>
       </div>
 

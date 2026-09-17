@@ -9,7 +9,6 @@ import {
   fetchSubjects,
   studentProfileKey,
   subjectsKey,
-  swrConfig,
 } from "~/lib/queries";
 import { clock, fmt, formatDate, pct } from "~/lib/format";
 import { useSession } from "~/lib/session";
@@ -29,13 +28,12 @@ export async function clientLoader({ params }: Route.ClientLoaderArgs) {
 export default function StudentProfilePage() {
   const { id = "" } = useParams();
   const { user } = useSession();
-  const { data } = useSWR(
-    studentProfileKey(id),
-    () => fetchStudentProfile(id),
-    swrConfig,
+  const { data } = useSWR(studentProfileKey(id), () => fetchStudentProfile(id));
+  const { data: subjects } = useSWR(subjectsKey(), fetchSubjects);
+  const taxonomy = useMemo(
+    () => buildTaxonomyLookup(subjects ?? []),
+    [subjects],
   );
-  const { data: subjects } = useSWR(subjectsKey(), fetchSubjects, swrConfig);
-  const taxonomy = useMemo(() => buildTaxonomyLookup(subjects ?? []), [subjects]);
 
   if (!data) return null;
 
@@ -95,7 +93,12 @@ export default function StudentProfilePage() {
         {data.recentQuestions?.length ? (
           <div className="cards" style={{ marginTop: 16 }}>
             {data.recentQuestions.map((q) => (
-              <QuestionCard key={q.id} question={q} taxonomy={taxonomy} compact />
+              <QuestionCard
+                key={q.id}
+                question={q}
+                taxonomy={taxonomy}
+                compact
+              />
             ))}
           </div>
         ) : (

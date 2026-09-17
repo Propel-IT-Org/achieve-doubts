@@ -2,12 +2,20 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
-import { AlertTriangle, ImageIcon, Lock, Plus, Send, User, X } from "lucide-react";
+import {
+  AlertTriangle,
+  ImageIcon,
+  Lock,
+  Plus,
+  Send,
+  User,
+  X,
+} from "lucide-react";
 import useSWR, { preload } from "swr";
 import { z } from "zod";
 
 import type { Route } from "./+types/ask";
-import { fetchSubjects, subjectsKey, swrConfig } from "~/lib/queries";
+import { fetchSubjects, subjectsKey } from "~/lib/queries";
 import { uploadFile, useCreateQuestion } from "~/lib/mutations";
 import { useSession } from "~/lib/session";
 import { Gate } from "~/components/primitives";
@@ -32,7 +40,10 @@ const askSchema = z.object({
     .positive("Choose a subject, book and chapter."),
   text: z
     .string()
-    .min(15, "Write at least 15 characters so the solver understands the problem."),
+    .min(
+      15,
+      "Write at least 15 characters so the solver understands the problem.",
+    ),
 });
 
 type AskForm = z.input<typeof askSchema>;
@@ -42,7 +53,7 @@ export default function AskPage() {
   const navigate = useNavigate();
   const flash = useToast();
   const create = useCreateQuestion();
-  const { data: subjects } = useSWR(subjectsKey(), fetchSubjects, swrConfig);
+  const { data: subjects } = useSWR(subjectsKey(), fetchSubjects);
 
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -116,7 +127,9 @@ export default function AskPage() {
       flash("Question posted. It's now in the queue.");
       navigate(`/questions/${created.id}`);
     } catch (e) {
-      setSubmitError(e instanceof Error ? e.message : "Couldn't post the question");
+      setSubmitError(
+        e instanceof Error ? e.message : "Couldn't post the question",
+      );
     }
   });
 
@@ -133,12 +146,16 @@ export default function AskPage() {
         <div className="ph">
           <h1>Ask a question</h1>
           <p>
-            Your question goes to the next online solver. Add a photo if the problem
-            has a diagram or working.
+            Your question goes to the next online solver. Add a photo if the
+            problem has a diagram or working.
           </p>
         </div>
 
-        <form className="panel" style={{ display: "grid", gap: 18 }} onSubmit={onSubmit}>
+        <form
+          className="panel"
+          style={{ display: "grid", gap: 18 }}
+          onSubmit={onSubmit}
+        >
           <div className="ask-grid">
             <label className="field">
               <span>Subject</span>
@@ -184,8 +201,14 @@ export default function AskPage() {
 
             <label className="field">
               <span>Chapter</span>
-              <select className="select" disabled={!bookId} {...register("chapterId")}>
-                <option value="">{bookId ? "Choose" : "Choose a book first"}</option>
+              <select
+                className="select"
+                disabled={!bookId}
+                {...register("chapterId")}
+              >
+                <option value="">
+                  {bookId ? "Choose" : "Choose a book first"}
+                </option>
                 {chapters.map((ch) => (
                   <option key={ch.id} value={ch.id}>
                     {ch.number}. {ch.nameEn}
@@ -239,7 +262,10 @@ export default function AskPage() {
                   Remove
                 </button>
               ) : (
-                <label className="btn btn-ghost btn-sm" style={{ cursor: "pointer" }}>
+                <label
+                  className="btn btn-ghost btn-sm"
+                  style={{ cursor: "pointer" }}
+                >
                   <Plus size={14} />
                   {uploading ? "Uploading…" : "Add photo"}
                   <input

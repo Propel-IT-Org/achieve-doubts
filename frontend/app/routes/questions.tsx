@@ -1,6 +1,12 @@
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
-import { AlertTriangle, Lock, RotateCcw, Search, SlidersHorizontal } from "lucide-react";
+import {
+  AlertTriangle,
+  Lock,
+  RotateCcw,
+  Search,
+  SlidersHorizontal,
+} from "lucide-react";
 import useSWR, { preload } from "swr";
 
 import type { Route } from "./+types/questions";
@@ -8,7 +14,6 @@ import {
   fetchQuestions,
   fetchSubjects,
   subjectsKey,
-  swrConfig,
   useQuestionsInfinite,
   type QuestionListFilters,
 } from "~/lib/queries";
@@ -61,7 +66,7 @@ export async function clientLoader({ request }: Route.ClientLoaderArgs) {
 function QuestionList({ filters }: { filters: QuestionListFilters }) {
   const { items, hasMore, loadMore, isLoadingMore, isLoadingInitial, error } =
     useQuestionsInfinite(filters);
-  const { data: subjects } = useSWR(subjectsKey(), fetchSubjects, swrConfig);
+  const { data: subjects } = useSWR(subjectsKey(), fetchSubjects);
 
   const taxonomy = useMemo(
     () => buildTaxonomyLookup(subjects ?? []),
@@ -139,7 +144,7 @@ export default function QuestionsPage() {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const filters = filtersFromParams(params);
-  const { data: subjects } = useSWR(subjectsKey(), fetchSubjects, swrConfig);
+  const { data: subjects } = useSWR(subjectsKey(), fetchSubjects);
 
   // Solvers race each other for locks, so their list has to stay live. The
   // endpoint requires the solver claim permission, so nobody else subscribes.
@@ -180,8 +185,9 @@ export default function QuestionsPage() {
           <div className="solver-hint">
             <Lock size={18} aria-hidden="true" />
             <span>
-              Open a question to lock it. While it's locked, only you can answer.
-              You can unlock it from the same page if you decide to skip it.
+              Open a question to lock it. While it's locked, only you can
+              answer. You can unlock it from the same page if you decide to skip
+              it.
             </span>
           </div>
         )}
@@ -217,13 +223,18 @@ export default function QuestionsPage() {
             )}
           </button>
 
-          <div className={`filters${filtersOpen ? " open" : ""}`} id="q-filters">
+          <div
+            className={`filters${filtersOpen ? " open" : ""}`}
+            id="q-filters"
+          >
             <label className="field">
               <span>Subject</span>
               <select
                 className="select"
                 value={subject}
-                onChange={(e) => setParam("subject", e.target.value, ["book", "chapter"])}
+                onChange={(e) =>
+                  setParam("subject", e.target.value, ["book", "chapter"])
+                }
               >
                 <option value="">All subjects</option>
                 {subjects?.map((s) => (
@@ -261,7 +272,9 @@ export default function QuestionsPage() {
                 disabled={!book}
                 onChange={(e) => setParam("chapter", e.target.value)}
               >
-                <option value="">{book ? "All chapters" : "Choose a book first"}</option>
+                <option value="">
+                  {book ? "All chapters" : "Choose a book first"}
+                </option>
                 {chapters.map((ch) => (
                   <option key={ch.id} value={String(ch.id)}>
                     {ch.number}. {ch.nameEn}
@@ -290,13 +303,22 @@ export default function QuestionsPage() {
 
         <div className="list-meta">
           <span aria-live="polite" />
-          <span style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+          <span
+            style={{
+              display: "flex",
+              gap: 14,
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
             {user?.role === "student" && (
               <label className="check">
                 <input
                   type="checkbox"
                   checked={mine}
-                  onChange={(e) => setParam("mine", e.target.checked ? "true" : "")}
+                  onChange={(e) =>
+                    setParam("mine", e.target.checked ? "true" : "")
+                  }
                 />
                 Only my questions
               </label>

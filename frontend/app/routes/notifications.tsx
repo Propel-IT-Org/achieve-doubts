@@ -13,11 +13,7 @@ import {
 import useSWR, { preload } from "swr";
 
 import type { Route } from "./+types/notifications";
-import {
-  fetchNotifications,
-  notificationsKey,
-  swrConfig,
-} from "~/lib/queries";
+import { fetchNotifications, notificationsKey } from "~/lib/queries";
 import {
   useMarkAllNotificationsRead,
   useMarkNotificationRead,
@@ -99,10 +95,8 @@ function NotificationList({ isStudent }: { isStudent: boolean }) {
   const navigate = useNavigate();
 
   const filters = { type: type || undefined, read };
-  const { data } = useSWR(
-    notificationsKey(filters),
-    () => fetchNotifications(filters),
-    swrConfig,
+  const { data } = useSWR(notificationsKey(filters), () =>
+    fetchNotifications(filters),
   );
 
   const markRead = useMarkNotificationRead();
@@ -210,7 +204,11 @@ function NotificationList({ isStudent }: { isStudent: boolean }) {
                         </span>
                       </span>
                     </span>
-                    <ChevronRight size={18} aria-hidden="true" className="n-chev" />
+                    <ChevronRight
+                      size={18}
+                      aria-hidden="true"
+                      className="n-chev"
+                    />
                   </button>
                 </li>
               );

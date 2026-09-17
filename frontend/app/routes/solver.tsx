@@ -9,7 +9,6 @@ import {
   fetchDashboard,
   fetchSubjects,
   subjectsKey,
-  swrConfig,
 } from "~/lib/queries";
 import { useFeedSubscription } from "~/lib/realtime";
 import { ago, dur, fmt, pct, shortName } from "~/lib/format";
@@ -52,13 +51,21 @@ export default function SolverDashboard() {
     );
   }
 
-  return <DashboardBody name={user?.name ?? "Solver"} isAdmin={user?.role === "adminSolver"} />;
+  return (
+    <DashboardBody
+      name={user?.name ?? "Solver"}
+      isAdmin={user?.role === "adminSolver"}
+    />
+  );
 }
 
 function DashboardBody({ name, isAdmin }: { name: string; isAdmin: boolean }) {
-  const { data } = useSWR(dashboardKey(), fetchDashboard, swrConfig);
-  const { data: subjects } = useSWR(subjectsKey(), fetchSubjects, swrConfig);
-  const taxonomy = useMemo(() => buildTaxonomyLookup(subjects ?? []), [subjects]);
+  const { data } = useSWR(dashboardKey(), fetchDashboard);
+  const { data: subjects } = useSWR(subjectsKey(), fetchSubjects);
+  const taxonomy = useMemo(
+    () => buildTaxonomyLookup(subjects ?? []),
+    [subjects],
+  );
 
   // Keeps the open-question count and "locked by you" list honest while the
   // dashboard sits open.
@@ -75,7 +82,9 @@ function DashboardBody({ name, isAdmin }: { name: string; isAdmin: boolean }) {
         <div className="prof" style={{ marginBottom: 24 }}>
           <Avatar name={name} size={64} />
           <div>
-            <h1 style={{ fontSize: "clamp(30px,4vw,42px)" }}>Solver dashboard</h1>
+            <h1 style={{ fontSize: "clamp(30px,4vw,42px)" }}>
+              Solver dashboard
+            </h1>
             <div className="prof-meta">
               <span>{name}</span>
               {isAdmin && <span className="tag gold">Admin solver</span>}
@@ -108,14 +117,18 @@ function DashboardBody({ name, isAdmin }: { name: string; isAdmin: boolean }) {
         </div>
 
         {blocked ? (
-          <div className="callout warn" role="status" style={{ marginBottom: 28 }}>
+          <div
+            className="callout warn"
+            role="status"
+            style={{ marginBottom: 28 }}
+          >
             <AlertTriangle size={20} />
             <div>
               <h3>Answer your follow-ups first</h3>
               <p>
-                You have {pending.length} unanswered follow-ups. You can't lock new
-                questions until fewer than {FOLLOWUP_BLOCK} are open. Reply in each
-                thread to clear them.
+                You have {pending.length} unanswered follow-ups. You can't lock
+                new questions until fewer than {FOLLOWUP_BLOCK} are open. Reply
+                in each thread to clear them.
               </p>
             </div>
           </div>
@@ -124,8 +137,8 @@ function DashboardBody({ name, isAdmin }: { name: string; isAdmin: boolean }) {
             <div>
               <h2 id="find-h">Find a question to solve</h2>
               <p>
-                {data.openQuestions} questions are open right now. Every solver sees
-                the same list; the first to lock a question answers it.
+                {data.openQuestions} questions are open right now. Every solver
+                sees the same list; the first to lock a question answers it.
               </p>
             </div>
             <Link className="btn btn-gold" to="/questions?status=waiting">
@@ -144,7 +157,12 @@ function DashboardBody({ name, isAdmin }: { name: string; isAdmin: boolean }) {
             {data.lockedByMe?.length ? (
               <div style={{ display: "grid", gap: 14, marginTop: 12 }}>
                 {data.lockedByMe.map((q) => (
-                  <QuestionCard key={q.id} question={q} taxonomy={taxonomy} compact />
+                  <QuestionCard
+                    key={q.id}
+                    question={q}
+                    taxonomy={taxonomy}
+                    compact
+                  />
                 ))}
               </div>
             ) : (
@@ -157,10 +175,15 @@ function DashboardBody({ name, isAdmin }: { name: string; isAdmin: boolean }) {
           <section className="panel" aria-labelledby="pend-h">
             <h2 className="h3" id="pend-h" style={{ fontSize: 22 }}>
               Unanswered follow-ups{" "}
-              <span className={`tag ${blocked ? "off" : ""}`}>{pending.length}</span>
+              <span className={`tag ${blocked ? "off" : ""}`}>
+                {pending.length}
+              </span>
             </h2>
             <div className="rule-line">
-              <span className={`rule-dots${blocked ? " full" : ""}`} aria-hidden="true">
+              <span
+                className={`rule-dots${blocked ? " full" : ""}`}
+                aria-hidden="true"
+              >
                 {Array.from({ length: FOLLOWUP_BLOCK }, (_, i) => (
                   // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length indicator
                   <i key={i} className={i < pending.length ? "on" : ""} />
@@ -168,7 +191,8 @@ function DashboardBody({ name, isAdmin }: { name: string; isAdmin: boolean }) {
               </span>
               <span>
                 Open follow-ups: {Math.min(pending.length, FOLLOWUP_BLOCK)} of{" "}
-                {FOLLOWUP_BLOCK}. At {FOLLOWUP_BLOCK}, locking new questions pauses.
+                {FOLLOWUP_BLOCK}. At {FOLLOWUP_BLOCK}, locking new questions
+                pauses.
               </span>
             </div>
             {pending.length ? (
@@ -184,7 +208,10 @@ function DashboardBody({ name, isAdmin }: { name: string; isAdmin: boolean }) {
                       </b>
                       <span>{ago(q.askedAt)}</span>
                     </div>
-                    <Link className="btn btn-primary btn-sm" to={`/questions/${q.id}`}>
+                    <Link
+                      className="btn btn-primary btn-sm"
+                      to={`/questions/${q.id}`}
+                    >
                       Answer follow-up
                     </Link>
                   </li>
@@ -202,7 +229,12 @@ function DashboardBody({ name, isAdmin }: { name: string; isAdmin: boolean }) {
         {data.recentlySolved?.length ? (
           <div className="cards" style={{ marginTop: 16 }}>
             {data.recentlySolved.map((q) => (
-              <QuestionCard key={q.id} question={q} taxonomy={taxonomy} compact />
+              <QuestionCard
+                key={q.id}
+                question={q}
+                taxonomy={taxonomy}
+                compact
+              />
             ))}
           </div>
         ) : (

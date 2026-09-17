@@ -7,12 +7,6 @@ import { api, unwrap } from "./api";
  * first element namespaces the resource.
  */
 
-export const swrConfig = {
-  suspense: true,
-  revalidateOnFocus: false,
-  revalidateOnReconnect: false,
-} as const;
-
 // ---------- taxonomy ----------
 
 export type Chapter = {
