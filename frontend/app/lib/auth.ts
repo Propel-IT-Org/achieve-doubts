@@ -1,9 +1,10 @@
 import { createAuthClient } from "better-auth/react";
 import { adminClient, usernameClient } from "better-auth/client/plugins";
 import { roles, ac } from "@achieve/doubts-backend/permissions";
+import { API_URL } from "./api";
 
 export const authClient = createAuthClient({
-  baseURL: "http://localhost:3000",
+  baseURL: API_URL,
   plugins: [
     adminClient({
       ac,
