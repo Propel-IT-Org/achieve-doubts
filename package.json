@@ -2,6 +2,7 @@
   "name": "achieve-doubts",
   "workspaces": [
     "frontend",
+    "admin",
     "backend",
     "achieve-portal"
   ],

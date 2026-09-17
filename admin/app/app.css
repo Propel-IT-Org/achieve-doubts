@@ -1,0 +1,40 @@
+/* Must come first: CSS requires every @import to precede all rules, and the
+   bundler inlines `tailwindcss` below, so a font import living inside
+   acs.css would land after Tailwind's rules and get dropped. */
+@import url('https://fonts.googleapis.com/css2?family=Gloock&family=Hanken+Grotesk:wght@400;500;600;700&family=Noto+Sans+Bengali:wght@400;500;600;700&family=Noto+Serif+Bengali:wght@500;600&display=swap');
+
+@import "tailwindcss";
+
+/* The prototype's design system. Everything it defines is scoped under
+   `.acs`, so it coexists with Tailwind rather than competing with it. */
+@import "./styles/acs.css";
+
+/* Loading placeholders (components/skeleton.tsx). Not part of the prototype,
+   which has no loading states; kept neutral so they read as "not here yet". */
+.acs .skel {
+  display: block;
+  background: linear-gradient(90deg, #e8edf5 0%, #f3f6fa 50%, #e8edf5 100%);
+  background-size: 200% 100%;
+  animation: acs-skel 1.4s ease-in-out infinite;
+}
+@keyframes acs-skel {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .acs .skel { animation: none; }
+}
+
+/* Sonner toasts (components/toast.tsx), in the prototype's `.toast` look.
+   Sonner owns positioning, so only the surface is restyled here. */
+.acs .acs-toast {
+  background: var(--navy);
+  color: #fff;
+  font-size: 14px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(20, 34, 74, .3);
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  margin-inline: auto;
+}

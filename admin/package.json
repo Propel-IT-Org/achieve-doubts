@@ -1,0 +1,39 @@
+{
+  "name": "@achieve/doubts-admin",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "react-router build",
+    "dev": "react-router dev --port 5174",
+    "start": "vite preview --port 5174",
+    "typecheck": "react-router typegen && tsc"
+  },
+  "dependencies": {
+    "@achieve/doubts-backend": "workspace:*",
+    "@hookform/resolvers": "^5.9.1",
+    "better-auth": "^1.7.5",
+    "hono": "^4.13.8",
+    "lucide-react": "^1.46.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-hook-form": "^7.88.0",
+    "react-router": "^8",
+    "recharts": "^3.10.1",
+    "sonner": "^2.0.8",
+    "swr": "^2.5.1",
+    "write-excel-file": "^4.1.1",
+    "zod": "^4.6.5",
+    "isbot": "^5"
+  },
+  "devDependencies": {
+    "@react-router/dev": "^8",
+    "@tailwindcss/vite": "^4.2.2",
+    "@types/node": "^22",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "tailwindcss": "^4.2.2",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.3",
+    "wrangler": "^4.133.0"
+  }
+}

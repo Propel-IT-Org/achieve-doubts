@@ -1,0 +1,10 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // The staff admin panel (admin.acsdoubts.com), a static SPA.
+  "name": "achieve-doubts-admin",
+  "compatibility_date": "2026-09-17",
+  "assets": {
+    "directory": "./build/client",
+    "not_found_handling": "single-page-application",
+  },
+}

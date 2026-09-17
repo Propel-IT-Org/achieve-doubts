@@ -5,25 +5,27 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useLocation,
 } from "react-router";
 import { AlertTriangle } from "lucide-react";
 
 import type { Route } from "./+types/root";
 import "./app.css";
-import { BottomNav, Footer, Header } from "./components/shell";
 import { Gate, SvgDefs } from "./components/primitives";
 import { Toaster } from "./components/toast";
-import { useSession } from "./lib/session";
-import { useUnreadCount } from "./lib/queries";
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
-  {
-    rel: "preconnect",
-    href: "https://fonts.gstatic.com",
-    crossOrigin: "anonymous",
-  },
+  { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
 ];
+
+export function meta() {
+  return [
+    { title: "Admin panel — Achieve Doubts" },
+    // Staff-only: nothing here belongs in a search index.
+    { name: "robots", content: "noindex" },
+  ];
+}
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -44,15 +46,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  const { user } = useSession();
-  const unread = useUnreadCount(Boolean(user));
+  // The panel has the dark bottom nav on phones; the sign-in page doesn't.
+  const signingIn = useLocation().pathname === "/login";
+
   return (
-    <div className="acs has-bnav" lang="en">
+    <div className={`acs ${signingIn ? "no-bnav" : "has-bnav"}`} lang="en">
       <SvgDefs />
-      <Header unread={unread} />
       <Outlet />
-      <Footer />
-      <BottomNav unread={unread} />
       <Toaster />
     </div>
   );
@@ -61,7 +61,6 @@ export default function App() {
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   let title = "Something went wrong";
   let details = "An unexpected error occurred.";
-  let stack: string | undefined;
 
   if (isRouteErrorResponse(error)) {
     title = error.status === 404 ? "Page not found" : "Error";
@@ -71,7 +70,6 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
         : error.statusText || details;
   } else if (error instanceof Error) {
     details = error.message;
-    if (import.meta.env.DEV) stack = error.stack;
   }
 
   return (
@@ -81,17 +79,9 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
         <div className="wrap">
           <Gate icon={<AlertTriangle size={24} />} title={title} text={details}>
             <a className="btn btn-primary" href="/">
-              Go to the homepage
+              Go to the admin panel
             </a>
           </Gate>
-          {stack && (
-            <pre
-              className="panel"
-              style={{ overflowX: "auto", fontSize: 12, marginTop: 24 }}
-            >
-              <code>{stack}</code>
-            </pre>
-          )}
         </div>
       </main>
     </div>
