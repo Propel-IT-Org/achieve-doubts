@@ -4,7 +4,7 @@ export const activeBodySchema = z.object({ active: z.boolean() });
 
 export const studentSearchQuerySchema = z.object({
   q: z.string().max(100).optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(25),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
   offset: z.coerce.number().int().min(0).default(0),
 });
 

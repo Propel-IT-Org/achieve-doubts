@@ -4,6 +4,8 @@
  *   bun dist/main.js            serve (default)
  *   bun dist/main.js migrate    apply drizzle/ migrations, then exit
  *   bun dist/main.js seed       load the subject/book/chapter taxonomy
+ *   STAFF_PASSWORD=… bun dist/main.js create-staff <email> <name>
+ *                               create an admin-panel (staff) account
  *
  * Subcommands load their code with dynamic import(), so `migrate` never
  * builds the app or starts the lock sweeper against a schema that may not
@@ -40,9 +42,14 @@ switch (command) {
     process.exit(0);
   }
 
+  case "create-staff": {
+    await createStaff(process.argv[3], process.argv[4]);
+    process.exit(0);
+  }
+
   default:
     console.error(
-      `Unknown command "${command}". Expected one of: serve, migrate, seed.`,
+      `Unknown command "${command}". Expected one of: serve, migrate, seed, create-staff.`,
     );
     process.exit(1);
 }
@@ -86,4 +93,31 @@ async function serve() {
 
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT", () => void shutdown("SIGINT"));
+}
+
+/**
+ * Staff accounts can only be made by staff, so the first one comes from
+ * here. The password is read from STAFF_PASSWORD rather than argv, which
+ * would leave it in shell history and the process list.
+ */
+async function createStaff(email: string | undefined, name: string | undefined) {
+  const password = process.env.STAFF_PASSWORD ?? "";
+  if (!email || !name || password.length < 8) {
+    console.error(
+      "Usage: STAFF_PASSWORD=<at least 8 chars> main create-staff <email> <name>",
+    );
+    process.exit(1);
+  }
+
+  const [{ createDatabase }, { createAuth }] = await Promise.all([
+    import("./db"),
+    import("./lib/auth"),
+  ]);
+  const db = createDatabase();
+  // No headers: better-auth treats this as a trusted server-side call.
+  const { user } = await createAuth(db).api.createUser({
+    body: { email, name, password, role: "staff" },
+  });
+  await db.$client.close();
+  console.log(`[create-staff] created ${user.email} (${user.id})`);
 }

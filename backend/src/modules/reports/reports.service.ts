@@ -86,11 +86,16 @@ export class ReportsService {
             text: true,
             status: true,
             subjectId: true,
+            bookId: true,
+            chapterId: true,
             askedAt: true,
             solverId: true,
+            deletedAt: true,
           },
+          with: { solver: { columns: { id: true, name: true } } },
         },
         reporter: { columns: { id: true, name: true } },
+        resolver: { columns: { id: true, name: true } },
       },
     });
   }

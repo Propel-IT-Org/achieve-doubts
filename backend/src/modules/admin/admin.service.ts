@@ -75,6 +75,10 @@ export class AdminService {
 
   // ---------- students ----------
 
+  /**
+   * One page of students matching `q`, each with their question and rating
+   * counts, plus how many match in total and how many of those are active.
+   */
   async listStudents(q: string | undefined, limit: number, offset: number) {
     const search = q?.trim();
     const filters = [eq(user.role, "student")];
@@ -88,26 +92,71 @@ export class AdminService {
       );
       if (match) filters.push(match);
     }
+    const where = and(...filters);
 
-    return this.db
+    // Per-asker counts, computed once and joined, rather than per row.
+    const asked = this.db
       .select({
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        banned: user.banned,
-        joinedAt: user.createdAt,
-        college: studentProfiles.college,
-        district: studentProfiles.district,
-        hscYear: studentProfiles.hscYear,
-        phone: studentProfiles.phone,
-        batchId: studentProfiles.batchId,
+        askerId: questions.askerId,
+        asked: sql<number>`count(*)`.as("asked"),
+        satisfied:
+          sql<number>`count(*) filter (where ${questions.status} = 'satisfied')`.as(
+            "satisfied",
+          ),
+        unsatisfied:
+          sql<number>`count(*) filter (where ${questions.status} = 'unsatisfied')`.as(
+            "unsatisfied",
+          ),
       })
-      .from(user)
-      .leftJoin(studentProfiles, eq(studentProfiles.userId, user.id))
-      .where(and(...filters))
-      .orderBy(desc(user.createdAt))
-      .limit(limit)
-      .offset(offset);
+      .from(questions)
+      .where(isNull(questions.deletedAt))
+      .groupBy(questions.askerId)
+      .as("asked");
+
+    const [rows, [totals]] = await Promise.all([
+      this.db
+        .select({
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          banned: user.banned,
+          joinedAt: user.createdAt,
+          college: studentProfiles.college,
+          district: studentProfiles.district,
+          hscYear: studentProfiles.hscYear,
+          phone: studentProfiles.phone,
+          batchId: studentProfiles.batchId,
+          asked: sql<number>`coalesce(${asked.asked}, 0)`,
+          satisfied: sql<number>`coalesce(${asked.satisfied}, 0)`,
+          unsatisfied: sql<number>`coalesce(${asked.unsatisfied}, 0)`,
+        })
+        .from(user)
+        .leftJoin(studentProfiles, eq(studentProfiles.userId, user.id))
+        .leftJoin(asked, eq(asked.askerId, user.id))
+        .where(where)
+        .orderBy(desc(user.createdAt))
+        .limit(limit)
+        .offset(offset),
+      this.db
+        .select({
+          total: sql<number>`count(*)`,
+          active: sql<number>`count(*) filter (where coalesce(${user.banned}, false) = false)`,
+        })
+        .from(user)
+        .leftJoin(studentProfiles, eq(studentProfiles.userId, user.id))
+        .where(where),
+    ]);
+
+    return {
+      students: rows.map((row) => ({
+        ...row,
+        asked: Number(row.asked),
+        satisfied: Number(row.satisfied),
+        unsatisfied: Number(row.unsatisfied),
+      })),
+      total: Number(totals?.total ?? 0),
+      active: Number(totals?.active ?? 0),
+    };
   }
 
   async getStudent(id: string) {
@@ -468,10 +517,14 @@ export class AdminService {
 
   // ---------- analytics ----------
 
+  /**
+   * Analytics count ANSWERED questions, dated by when they were answered —
+   * the same basis as the invoice, so the two pages agree for a range.
+   */
   private rangeFilters(query: RangeQuery) {
-    const filters = [isNull(questions.deletedAt)];
-    if (query.from) filters.push(gte(questions.askedAt, new Date(query.from)));
-    if (query.to) filters.push(upperBound(questions.askedAt, query.to));
+    const filters = [isNull(questions.deletedAt), isNotNull(questions.answeredAt)];
+    if (query.from) filters.push(gte(questions.answeredAt, new Date(query.from)));
+    if (query.to) filters.push(upperBound(questions.answeredAt, query.to));
     if (query.subject) filters.push(eq(questions.subjectId, query.subject));
     if (query.solver) filters.push(eq(questions.solverId, query.solver));
     return filters;
@@ -506,7 +559,7 @@ export class AdminService {
         total: sql<number>`count(*)`,
       })
       .from(questions)
-      .where(and(...filters, sql`${questions.answeredAt} is not null`))
+      .where(and(...filters))
       .groupBy(sql`date_trunc('day', ${questions.answeredAt})`)
       .orderBy(sql`date_trunc('day', ${questions.answeredAt})`);
 
@@ -544,6 +597,7 @@ export class AdminService {
       .select({
         solverId: questions.solverId,
         name: user.name,
+        banned: user.banned,
         answered: sql<number>`count(*)`,
         satisfied: sql<number>`count(*) filter (where ${questions.status} = 'satisfied')`,
         unsatisfied: sql<number>`count(*) filter (where ${questions.status} = 'unsatisfied')`,
@@ -554,8 +608,8 @@ export class AdminService {
       .from(questions)
       .innerJoin(user, eq(user.id, questions.solverId))
       .leftJoin(solutions, eq(solutions.questionId, questions.id))
-      .where(and(...filters, sql`${questions.solverId} is not null`))
-      .groupBy(questions.solverId, user.name);
+      .where(and(...filters))
+      .groupBy(questions.solverId, user.name, user.banned);
 
     const shaped = rows.map((r) => {
       const satisfied = Number(r.satisfied);
@@ -563,6 +617,7 @@ export class AdminService {
       return {
         solverId: r.solverId,
         name: r.name,
+        active: r.banned !== true,
         answered: Number(r.answered),
         satisfied,
         unsatisfied,
@@ -587,6 +642,8 @@ export class AdminService {
 
     return {
       eligibleCount: eligible.length,
+      /** Solvers with at least one answer in the range. */
+      rankedCount: shaped.length,
       best: bySatisfaction.slice(0, 5),
       worst: [...bySatisfaction].reverse().slice(0, 5),
       mostAnswered: byAnswered[0] ?? null,
