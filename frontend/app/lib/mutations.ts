@@ -271,8 +271,25 @@ export async function uploadFile(file: File): Promise<string> {
     headers: Record<string, string>;
   }>(res);
 
-  const put = await fetch(uploadUrl, { method: "PUT", body, headers });
-  if (!put.ok) throw new Error("Upload failed");
+  let put: Response;
+  try {
+    put = await fetch(uploadUrl, { method: "PUT", body, headers });
+  } catch {
+    // The browser blocked it or never got an answer: the bucket's CORS rules
+    // have to allow PUT with a content-type header from this origin. A
+    // rejected preflight surfaces here as a bare "Failed to fetch".
+    throw new Error(
+      "The storage bucket refused the upload. Check its CORS rules allow PUT from this site.",
+    );
+  }
+
+  if (!put.ok) {
+    // S3-compatible services answer with an XML <Error><Code>…</Code>.
+    const detail = (await put.text().catch(() => "")).match(/<Code>([^<]+)<\/Code>/)?.[1];
+    throw new Error(
+      `Upload failed (${put.status}${detail ? `: ${detail}` : ""}).`,
+    );
+  }
 
   return publicUrl;
 }
