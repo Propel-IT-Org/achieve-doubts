@@ -32,7 +32,12 @@ export function createApp(customContainer: AppContainer = container) {
   const app = new Hono<AppEnv>();
 
   app.use("*", requestId());
-  app.use("*", logger());
+  // Traefik and the container health check poll /api/healthz every few
+  // seconds; logging that buries everything else.
+  const requestLogger = logger();
+  app.use("*", (c, next) =>
+    c.req.path === "/api/healthz" ? next() : requestLogger(c, next),
+  );
   app.use("*", secureHeaders());
   app.use(
     "*",
