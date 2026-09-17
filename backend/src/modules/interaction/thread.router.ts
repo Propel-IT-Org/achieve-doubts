@@ -76,6 +76,7 @@ export const threadRouter = new Hono<AppEnv>()
         notifyUserId,
       );
 
+      c.var.di.get("feed").broadcast("THREAD_CHANGED", { questionId });
       return c.json({ message }, 201);
     },
   )
@@ -93,6 +94,7 @@ export const threadRouter = new Hono<AppEnv>()
         .deleteMessage(questionId, msgId, c.var.user.id);
 
       if (!message) return fail(c, 404, "NOT_FOUND", "Thread message not found");
+      c.var.di.get("feed").broadcast("THREAD_CHANGED", { questionId });
       return c.json({ message });
     },
   );

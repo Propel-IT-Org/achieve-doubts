@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import type { DB } from "../db";
 import { lockEvents, notifications, questions } from "../db/schema";
-import type { FeedHub } from "../ws/hub";
+import { publishFeed } from "../ws/hub";
 
 /**
  * Arbitrary constant identifying the sweep lock. Advisory locks share one
@@ -29,7 +29,7 @@ const SWEEP_LOCK_KEY = 4_820_119;
  * idle pooled connection, and no instance ever sweeps again. An xact lock is
  * taken and released on the one connection the transaction owns.
  */
-export async function sweepExpiredLocks(db: DB, feed?: FeedHub) {
+export async function sweepExpiredLocks(db: DB) {
   const expiredIds = await db.transaction(async (tx) => {
     const lockRows = (await tx.execute(
       sql`select pg_try_advisory_xact_lock(${SWEEP_LOCK_KEY}) as ok`,
@@ -42,7 +42,7 @@ export async function sweepExpiredLocks(db: DB, feed?: FeedHub) {
   // Broadcast only after COMMIT. Announcing from inside the transaction would
   // let a client refetch before the change is visible and see the old state.
   for (const questionId of expiredIds) {
-    feed?.broadcast("QUESTION_EXPIRED", { questionId });
+    publishFeed("QUESTION_EXPIRED", { questionId });
   }
 
   return expiredIds.length;
@@ -107,13 +107,9 @@ async function runSweep(db: DB): Promise<number[]> {
  * Starts the periodic sweep. Returns a stop function so tests (and a
  * graceful shutdown) can clear the timer.
  */
-export function startLockSweeper(
-  db: DB,
-  feed?: FeedHub,
-  intervalMs = 30_000,
-): () => void {
+export function startLockSweeper(db: DB, intervalMs = 30_000): () => void {
   const timer = setInterval(() => {
-    sweepExpiredLocks(db, feed).catch((err) => {
+    sweepExpiredLocks(db).catch((err) => {
       console.error("[lock-sweeper] sweep failed", err);
     });
   }, intervalMs);

@@ -6,44 +6,65 @@ import {
 } from "hono/bun";
 import { createSubscriber, getRedis } from "../lib/redis";
 
-export type WSFeedEvent =
+/**
+ * Everything a viewer can see change on a question. Events carry ids only —
+ * clients re-read what they're allowed to see, so the public socket never
+ * leaks private content (solutions, follow-up threads).
+ */
+export type FeedEvent =
 	| "QUESTION_CREATED"
 	| "QUESTION_LOCKED"
 	| "QUESTION_UNLOCKED"
 	| "QUESTION_OVERRIDDEN"
 	| "QUESTION_EXPIRED"
-	| "QUESTION_ANSWERED";
+	| "QUESTION_ANSWERED"
+	| "QUESTION_RATED"
+	| "QUESTION_DELETED"
+	| "SOLUTION_DELETED"
+	| "THREAD_CHANGED"
+	| "COMMENTS_CHANGED";
+
+export type FeedMessage = {
+	event: FeedEvent;
+	data: { questionId: number; solverId?: string };
+	ts: number;
+};
 
 /** Redis channel carrying feed events between backend instances. */
 const FEED_CHANNEL = "doubts:feed";
+const FEED_TOPIC = "questions:feed";
 
 const { upgradeWebSocket, websocket } =
 	createBunWebSocket<ServerWebSocket<BunWebSocketData>>();
 
 /**
- * The publish surface we actually use. Bun's `Server` and `ServerWebSocket`
- * both expose `publish`, and the DI scope hands us the server — this type
- * says what we rely on instead of asserting a socket we don't have.
+ * The publish surface we actually use. Bun's `Server` exposes `publish`, and
+ * the DI scope hands us the server — this type says what we rely on instead
+ * of asserting a socket we don't have.
  */
 type PublishTarget = {
 	publish?: (topic: string, data: string) => unknown;
 };
 
+/**
+ * This process's Bun server, remembered from the first request scope. Every
+ * WebSocket client arrived through a request, so by the time anyone can
+ * receive an event this is set — which is what lets background jobs (the
+ * lock sweeper) publish without a request of their own.
+ */
+let localTarget: PublishTarget | undefined;
 let relayStarted = false;
 
 /**
  * Bridges Redis pub/sub into this process's local WebSocket topic.
  *
  * Bun's topic publish only reaches sockets held by THIS process, so with more
- * than one replica a lock taken on instance A would never reach a solver
+ * than one replica a lock taken on instance A would never reach a client
  * connected to instance B. Every instance therefore publishes to Redis and
  * relays whatever it receives to its own subscribers.
- *
- * Idempotent, and started from the first WebSocket subscription because that
- * is the earliest point where the Bun server handle is available.
  */
-function ensureFeedRelay(target: PublishTarget | undefined) {
-	if (relayStarted || !target?.publish) return;
+function ensureFeedRelay() {
+	if (relayStarted || !localTarget) return;
 
 	const subscriber = createSubscriber();
 	// Single-instance: local publish already reaches every connected client.
@@ -53,7 +74,7 @@ function ensureFeedRelay(target: PublishTarget | undefined) {
 
 	subscriber
 		.subscribe(FEED_CHANNEL, (message: string) => {
-			target.publish?.(FeedHub.FEED_TOPIC, message);
+			localTarget?.publish?.(FEED_TOPIC, message);
 		})
 		.catch((err: unknown) => {
 			relayStarted = false;
@@ -61,52 +82,52 @@ function ensureFeedRelay(target: PublishTarget | undefined) {
 		});
 }
 
+/** Publishes one event to every connected client, on every replica. */
+export function publishFeed(event: FeedEvent, data: FeedMessage["data"]) {
+	const payload = JSON.stringify({
+		event,
+		data,
+		ts: Date.now(),
+	} satisfies FeedMessage);
+	const redis = getRedis();
+
+	if (redis) {
+		// Redis echoes a publish to EVERY subscriber, this instance included,
+		// and the relay above turns that back into a local publish. Publishing
+		// locally as well would deliver the event twice to our own clients.
+		redis.publish(FEED_CHANNEL, payload).catch((err: unknown) => {
+			console.error("[feed] Redis publish failed", err);
+		});
+		return;
+	}
+
+	localTarget?.publish?.(FEED_TOPIC, payload);
+}
+
 /**
- * Pub/sub for the live question feed.
- *
- * Fan-out is Redis-backed when REDIS_URL is set and process-local otherwise,
- * so the same interface covers both a single box and N replicas.
+ * Request-scoped handle on the live feed. Fan-out is Redis-backed when
+ * REDIS_URL is set and process-local otherwise, so the same interface covers
+ * both a single box and N replicas.
  */
 export class FeedHub {
-	static FEED_TOPIC = "questions:feed";
+	// In request scope this is the Bun *server*; absent in tests.
+	constructor(server?: ServerWebSocket<BunWebSocketData>) {
+		const target = server as PublishTarget | undefined;
+		if (target?.publish) localTarget ??= target;
+	}
 
-	// In request scope this is the Bun *server* (publish is a server-level
-	// method); `subscribe`/`unsubscribe` are handed the actual socket by the
-	// router. Absent in tests/mock-fetch mode.
-	constructor(private ws: ServerWebSocket<BunWebSocketData>) {}
-
+	// `ws.raw` is typed optional by Hono's adapter; it is always set on Bun.
 	subscribe(socket?: ServerWebSocket<BunWebSocketData>) {
-		ensureFeedRelay(this.ws as PublishTarget | undefined);
-		const target = socket ?? this.ws;
-		target?.subscribe?.(FeedHub.FEED_TOPIC);
+		ensureFeedRelay();
+		socket?.subscribe(FEED_TOPIC);
 	}
 
 	unsubscribe(socket?: ServerWebSocket<BunWebSocketData>) {
-		const target = socket ?? this.ws;
-		if (target?.isSubscribed?.(FeedHub.FEED_TOPIC)) {
-			target.unsubscribe(FeedHub.FEED_TOPIC);
-		}
+		if (socket?.isSubscribed(FEED_TOPIC)) socket.unsubscribe(FEED_TOPIC);
 	}
 
-	broadcast(event: WSFeedEvent, data: Record<string, unknown>) {
-		const payload = JSON.stringify({ event, data, ts: Date.now() });
-		const redis = getRedis();
-
-		if (redis) {
-			// Redis echoes a publish to EVERY subscriber, this instance
-			// included, and the relay above turns that back into a local
-			// publish. Publishing locally here as well would deliver the event
-			// twice to our own clients.
-			redis.publish(FEED_CHANNEL, payload).catch((err: unknown) => {
-				console.error("[feed] Redis publish failed", err);
-			});
-			return;
-		}
-
-		(this.ws as PublishTarget | undefined)?.publish?.(
-			FeedHub.FEED_TOPIC,
-			payload,
-		);
+	broadcast(event: FeedEvent, data: FeedMessage["data"]) {
+		publishFeed(event, data);
 	}
 }
 

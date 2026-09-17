@@ -65,6 +65,7 @@ export const solutionsRouter = new Hono<AppEnv>()
         return fail(c, 403, "FORBIDDEN", "Forbidden: not your solution");
       }
 
+      c.var.di.get("feed").broadcast("SOLUTION_DELETED", { questionId });
       return c.json({ question: result.question });
     },
   )
@@ -92,6 +93,7 @@ export const solutionsRouter = new Hono<AppEnv>()
         return fail(c, 400, "VALIDATION_FAILED", "This question has not been answered yet");
       }
 
+      c.var.di.get("feed").broadcast("QUESTION_RATED", { questionId });
       return c.json({ question: result.question });
     },
   );

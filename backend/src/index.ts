@@ -199,12 +199,10 @@ export function createApp(customContainer: AppContainer = container) {
 const app = createApp();
 
 export type AppType = typeof app;
+export type { FeedEvent, FeedMessage } from "./ws/hub";
 
 // Returning expired locks to the feed is a background concern, not a
-// request-scoped one. It gets no FeedHub here because the hub publishes
-// through the per-request Bun server handle — the sweep still flips status,
-// records the lock event and notifies the asker; connected clients pick the
-// change up on their next feed read.
+// request-scoped one; it publishes through ws/hub.ts's module-level handle.
 if (env.NODE_ENV !== "test") {
   startLockSweeper(container.get("db"));
 }

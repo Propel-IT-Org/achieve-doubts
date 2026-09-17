@@ -82,10 +82,10 @@ export const questionsRouter = new Hono<AppEnv>()
       return c.json({ count: value });
     },
   )
+  // Public: events carry question ids only, which the list already exposes,
+  // and every viewer's page should stay current — not just solvers'.
   .get(
     "/feed/ws",
-    requireAuth,
-    requirePermission({ question: ["claim"] }),
     upgradeWebSocket((c: Context<AppEnv, "/feed/ws", BlankInput>) => {
       const feedHub = c.var.di.get("feed");
       return {
@@ -218,6 +218,7 @@ export const questionsRouter = new Hono<AppEnv>()
         .softDeleteQuestion(id, c.var.user.id);
 
       if (!result.ok) return fail(c, 404, "NOT_FOUND", "Question not found");
+      c.var.di.get("feed").broadcast("QUESTION_DELETED", { questionId: id });
       return c.json(result.question);
     },
   );

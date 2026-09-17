@@ -35,6 +35,7 @@ export const commentsRouter = new Hono<AppEnv>()
         .createComment(questionId, c.var.user.id, input);
 
       if ("error" in result) return fail(c, 404, "NOT_FOUND", "Question not found");
+      c.var.di.get("feed").broadcast("COMMENTS_CHANGED", { questionId });
       return c.json({ comment: result.comment }, 201);
     },
   )
@@ -52,6 +53,7 @@ export const commentsRouter = new Hono<AppEnv>()
         .deleteComment(questionId, commentId, c.var.user.id);
 
       if (!comment) return fail(c, 404, "NOT_FOUND", "Comment not found");
+      c.var.di.get("feed").broadcast("COMMENTS_CHANGED", { questionId });
       return c.json({ comment });
     },
   );
