@@ -27,6 +27,7 @@ export class UploadService {
         Key: key,
         ContentType: type,
         ContentLength: size,
+        CacheControl: "public, max-age=31536000, s-maxage=31536000, immutable",
       }),
       {
         expiresIn: PRESIGN_TTL_SECONDS,
