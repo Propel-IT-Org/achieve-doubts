@@ -1,102 +1,97 @@
 import { describe, expect, it } from "bun:test";
-import { Image } from "bun";
+import { S3Client } from "bun";
+import { env } from "../src/env";
+import { UploadService } from "../src/modules/upload/upload.service";
 import {
-  MediaError,
-  processAudio,
-  processImage,
-} from "../src/modules/upload/upload.media";
+  checkAttachmentUrl,
+  uploadKeyFromUrl,
+} from "../src/modules/upload/upload.util";
 
-const PNG_1PX = Uint8Array.fromBase64(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
-);
+const base = env.S3_PUBLIC_URL.replace(/\/+$/, "");
+const keyFor = (owner: string, extension: string) =>
+  `uploads/${owner}/1700000000000-${crypto.randomUUID()}.${extension}`;
 
-const render = (width: number, height: number) =>
-  new Image(PNG_1PX).resize(width, height);
+describe("uploadKeyFromUrl", () => {
+  const key = keyFor("u1", "webp");
 
-/** JPEG with an EXIF APP1 segment carrying the given Orientation value. */
-async function jpegWithOrientation(
-  width: number,
-  height: number,
-  orientation: number,
-) {
-  const jpeg = await render(width, height).jpeg({ quality: 90 }).bytes();
-  const tiff = [
-    0x49, 0x49, 0x2a, 0x00, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x12, 0x01,
-    0x03, 0x00, 0x01, 0x00, 0x00, 0x00, orientation, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00,
-  ];
-  const payload = [0x45, 0x78, 0x69, 0x66, 0x00, 0x00, ...tiff];
-  const length = payload.length + 2;
-  return new Uint8Array([
-    ...jpeg.subarray(0, 2),
-    0xff,
-    0xe1,
-    (length >> 8) & 0xff,
-    length & 0xff,
-    ...payload,
-    ...jpeg.subarray(2),
-  ]);
-}
-
-describe("processImage", () => {
-  it("re-encodes other formats as WebP and fits them inside 2048px", async () => {
-    const input = await render(3000, 1500).png().bytes();
-    const result = await processImage(input);
-
-    expect(result.contentType).toBe("image/webp");
-    expect(result.extension).toBe("webp");
-    expect([result.width, result.height]).toEqual([2048, 1024]);
-    const stored = await new Image(result.bytes).metadata();
-    expect(stored).toEqual({ width: 2048, height: 1024, format: "webp" });
+  it("extracts a key the service could have issued", () => {
+    expect(uploadKeyFromUrl(`${base}/${key}`)).toBe(key);
   });
 
-  it("never enlarges a small image", async () => {
-    const result = await processImage(await render(320, 200).jpeg().bytes());
-    expect([result.width, result.height]).toEqual([320, 200]);
-  });
-
-  it("applies EXIF orientation before the metadata is dropped", async () => {
-    // Orientation 6 = rotate 90° clockwise: a 64x32 sensor image is portrait.
-    const result = await processImage(await jpegWithOrientation(64, 32, 6));
-    expect([result.width, result.height]).toEqual([32, 64]);
-  });
-
-  it("stores an already-compressed, in-bounds WebP untouched", async () => {
-    const input = await render(800, 600).webp({ quality: 82 }).bytes();
-    const result = await processImage(input);
-    expect(result.bytes).toBe(input);
-  });
-
-  it("re-encodes a WebP that is too large", async () => {
-    const input = await render(4000, 1000).webp().bytes();
-    const result = await processImage(input);
-    expect(result.bytes).not.toBe(input);
-    expect([result.width, result.height]).toEqual([2048, 512]);
-  });
-
-  it("rejects bytes that are not an image, whatever they're called", async () => {
-    const html = new TextEncoder().encode("<html><script>alert(1)</script>");
-    await expect(processImage(html)).rejects.toBeInstanceOf(MediaError);
+  it("rejects other hosts, lookalike prefixes and crafted keys", () => {
+    expect(uploadKeyFromUrl(`https://evil.example/${key}`)).toBeNull();
+    expect(uploadKeyFromUrl(`${base}.evil.example/${key}`)).toBeNull();
+    expect(uploadKeyFromUrl(`${base}/uploads/u1/../../secret.webp`)).toBeNull();
+    expect(uploadKeyFromUrl(`${base}/uploads/u1/photo.html`)).toBeNull();
   });
 });
 
-describe("processAudio", () => {
-  it("recognises WebM by its EBML signature", () => {
-    const webm = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x86]);
-    expect(processAudio(webm).contentType).toBe("audio/webm");
+describe("checkAttachmentUrl", () => {
+  it("accepts the poster's own upload of the right kind", () => {
+    expect(checkAttachmentUrl(`${base}/${keyFor("u1", "webp")}`, "u1", "image")).toBeNull();
+    expect(checkAttachmentUrl(`${base}/${keyFor("u1", "jpg")}`, "u1", "image")).toBeNull();
+    expect(checkAttachmentUrl(`${base}/${keyFor("u1", "m4a")}`, "u1", "audio")).toBeNull();
   });
 
-  it("recognises MP4/M4A by its ftyp box", () => {
-    const m4a = new Uint8Array([
-      0x00, 0x00, 0x00, 0x20, ...new TextEncoder().encode("ftypM4A "),
-    ]);
-    const result = processAudio(m4a);
-    expect(result.contentType).toBe("audio/mp4");
-    expect(result.extension).toBe("m4a");
+  it("refuses external URLs, which every viewer's browser would request", () => {
+    expect(
+      checkAttachmentUrl("https://tracker.example/pixel.webp", "u1", "image"),
+    ).toContain("uploaded through this site");
   });
 
-  it("rejects anything else", () => {
-    const text = new TextEncoder().encode("definitely not audio");
-    expect(() => processAudio(text)).toThrow(MediaError);
+  it("refuses someone else's upload", () => {
+    expect(
+      checkAttachmentUrl(`${base}/${keyFor("u2", "webp")}`, "u1", "image"),
+    ).toContain("uploaded yourself");
+  });
+
+  it("refuses an upload of the wrong kind", () => {
+    expect(
+      checkAttachmentUrl(`${base}/${keyFor("u1", "webm")}`, "u1", "image"),
+    ).toContain("isn't an image");
+    expect(
+      checkAttachmentUrl(`${base}/${keyFor("u1", "webp")}`, "u1", "audio"),
+    ).toContain("isn't an audio recording");
+  });
+});
+
+describe("presigned uploads with Bun's S3 client", () => {
+  // Presigning is a local computation, so no bucket is needed.
+  const service = new UploadService(
+    new S3Client({
+      endpoint: "https://acct.r2.cloudflarestorage.com",
+      region: "auto",
+      bucket: "media",
+      accessKeyId: "test-key",
+      secretAccessKey: "test-secret",
+    }),
+  );
+
+  it("issues a short-lived PUT URL for a server-chosen key", () => {
+    const upload = service.createPresignedUpload("image/webp", "u1");
+    const url = new URL(upload.uploadUrl);
+
+    expect(url.host).toBe("acct.r2.cloudflarestorage.com");
+    expect(url.pathname).toMatch(
+      /^\/media\/uploads\/u1\/\d+-[0-9a-f-]{36}\.webp$/,
+    );
+    expect(url.searchParams.get("X-Amz-Expires")).toBe("120");
+    expect(upload.method).toBe("PUT");
+    expect(upload.headers["content-type"]).toBe("image/webp");
+    expect(upload.publicUrl).toBe(`${base}/${upload.key}`);
+  });
+
+  it("issues URLs that pass the attachment check for their owner", () => {
+    const upload = service.createPresignedUpload("audio/mp4", "u1");
+    expect(upload.key).toEndWith(".m4a");
+    expect(checkAttachmentUrl(upload.publicUrl, "u1", "audio")).toBeNull();
+  });
+
+  it("adds no checksum parameters a browser PUT couldn't satisfy", () => {
+    const url = new URL(service.createPresignedUpload("image/jpeg", "u1").uploadUrl);
+    const checksumParams = [...url.searchParams.keys()].filter((name) =>
+      name.toLowerCase().startsWith("x-amz-checksum"),
+    );
+    expect(checksumParams).toEqual([]);
   });
 });

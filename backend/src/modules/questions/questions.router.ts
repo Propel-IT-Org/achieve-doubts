@@ -9,7 +9,7 @@ import {
   requirePermission,
 } from "../../middleware/auth";
 import { upgradeWebSocket } from "../../ws/hub";
-import { isOwnUploadUrl } from "../upload/upload.util";
+import { checkAttachmentUrl } from "../upload/upload.util";
 import {
   createQuestionSchema,
   listQuestionsQuerySchema,
@@ -44,15 +44,12 @@ export const questionsRouter = new Hono<AppEnv>()
     async (c) => {
       const input = c.req.valid("json");
 
-      // A client can't attach an arbitrary URL — it has to be one our own
-      // presign flow handed out.
-      if (input.photoUrl && !isOwnUploadUrl(input.photoUrl)) {
-        return fail(
-          c,
-          400,
-          "VALIDATION_FAILED",
-          "photoUrl must be a URL returned by the upload presign flow",
-        );
+      // The photo must be one of the asker's own uploads.
+      const photoProblem =
+        input.photoUrl &&
+        checkAttachmentUrl(input.photoUrl, c.var.user.id, "image");
+      if (photoProblem) {
+        return fail(c, 400, "VALIDATION_FAILED", photoProblem);
       }
 
       const result = await c.var.di

@@ -1,14 +1,10 @@
 import { afterAll, describe, expect, it } from "bun:test";
-import { Image } from "bun";
 import { createApp } from "../../src/index";
 import { createMockAuth } from "../helpers/mock-auth";
 import { createTestClient } from "../helpers/test-client";
 
-const PNG_1PX = Uint8Array.fromBase64(
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
-);
-
-// Uploads land on local disk in tests (no S3 configured); remove them after.
+// No S3 is configured in tests, so presigned URLs point at the local
+// development stand-in and files land on disk. Remove them afterwards.
 const storedKeys: string[] = [];
 afterAll(async () => {
   for (const key of storedKeys) {
@@ -18,95 +14,102 @@ afterAll(async () => {
   }
 });
 
+const WEBP = new Uint8Array([
+  ...new TextEncoder().encode("RIFF"),
+  0x24, 0x00, 0x00, 0x00,
+  ...new TextEncoder().encode("WEBPVP8 "),
+]);
+
 const asStudent = () =>
   createTestClient({
     auth: createMockAuth({ id: "student-u1", role: "student" }),
   });
 
-type Uploaded = {
-  url: string;
+type Presigned = {
   key: string;
-  contentType: string;
-  width: number | null;
-  height: number | null;
+  uploadUrl: string;
+  publicUrl: string;
+  method: string;
+  headers: Record<string, string>;
+  expiresIn: number;
 };
 
-describe("API Route: POST /api/upload", () => {
+describe("API Route: POST /api/upload/presign", () => {
   it("returns 401 when unauthenticated", async () => {
     const client = createTestClient({ auth: createMockAuth(null) });
-    const res = await client.api.upload.$post({
-      form: { file: new File([PNG_1PX], "a.png", { type: "image/png" }) },
+    const res = await client.api.upload.presign.$post({
+      json: { contentType: "image/webp", size: 120_000 },
     });
     // requireAuth's 401 comes from middleware, which RPC types don't list.
     expect(res.status as number).toBe(401);
   });
 
-  it("stores an image as a bounded WebP under the uploader's prefix", async () => {
-    const jpeg = await new Image(PNG_1PX).resize(3000, 1500).jpeg().bytes();
-    const res = await asStudent().api.upload.$post({
-      form: {
-        file: new File([jpeg as Uint8Array<ArrayBuffer>], "photo.jpg", {
-          type: "image/jpeg",
-        }),
-      },
+  it("issues an upload URL under the caller's own prefix", async () => {
+    const res = await asStudent().api.upload.presign.$post({
+      json: { contentType: "image/webp", size: 240_000 },
     });
 
-    expect(res.status).toBe(201);
-    const body = (await res.json()) as Uploaded;
-    storedKeys.push(body.key);
-
-    expect(body.contentType).toBe("image/webp");
-    expect([body.width, body.height]).toEqual([2048, 1024]);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Presigned;
     expect(body.key).toStartWith("uploads/student-u1/");
     expect(body.key).toEndWith(".webp");
-
-    // And it is served back, with the right type, in development.
-    const served = await createApp().request(new URL(body.url).pathname);
-    expect(served.status).toBe(200);
-    expect(served.headers.get("content-type")).toBe("image/webp");
-    const metadata = await new Image(await served.bytes()).metadata();
-    expect(metadata.format).toBe("webp");
+    expect(body.method).toBe("PUT");
+    expect(body.headers["content-type"]).toBe("image/webp");
+    expect(body.expiresIn).toBe(120);
   });
 
-  it("rejects a file that claims to be an image but isn't", async () => {
-    const res = await asStudent().api.upload.$post({
-      form: {
-        file: new File(["<html>not a picture</html>"], "x.png", {
-          type: "image/png",
-        }),
-      },
+  it("refuses types the browser never produces", async () => {
+    const res = await asStudent().api.upload.presign.$post({
+      json: { contentType: "image/png" as never, size: 1000 },
     });
     expect(res.status).toBe(400);
-    const body = (await res.json()) as { code: string };
+  });
+
+  it("refuses a declared size over the cap", async () => {
+    const res = await asStudent().api.upload.presign.$post({
+      json: { contentType: "image/webp", size: 4 * 1024 * 1024 },
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string; error: string };
     expect(body.code).toBe("VALIDATION_FAILED");
-  });
-
-  it("stores a WebM voice note as-is", async () => {
-    const webm = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x86, 0x81]);
-    const res = await asStudent().api.upload.$post({
-      form: { file: new File([webm], "note.webm", { type: "audio/webm" }) },
-    });
-    expect(res.status).toBe(201);
-    const body = (await res.json()) as Uploaded;
-    storedKeys.push(body.key);
-    expect(body.contentType).toBe("audio/webm");
-    expect(body.key).toEndWith(".webm");
-  });
-
-  it("rejects an image over the input limit", async () => {
-    const huge = new File([new Uint8Array(16 * 1024 * 1024)], "big.png", {
-      type: "image/png",
-    });
-    const res = await asStudent().api.upload.$post({ form: { file: huge } });
-    expect(res.status).toBe(413);
+    expect(body.error).toContain("3 MB");
   });
 });
 
-describe("API Route: GET /api/upload/local/*", () => {
+describe("API Route: local upload stand-in", () => {
+  it("accepts a PUT to an issued URL and serves it back safely", async () => {
+    const presign = await asStudent().api.upload.presign.$post({
+      json: { contentType: "image/webp", size: WEBP.byteLength },
+    });
+    const issued = (await presign.json()) as Presigned;
+    storedKeys.push(issued.key);
+    const app = createApp();
+
+    const put = await app.request(new URL(issued.uploadUrl).pathname, {
+      method: "PUT",
+      headers: issued.headers,
+      body: WEBP,
+    });
+    expect(put.status).toBe(200);
+
+    const served = await app.request(new URL(issued.publicUrl).pathname);
+    expect(served.status).toBe(200);
+    expect(served.headers.get("content-type")).toBe("image/webp");
+    expect(served.headers.get("content-security-policy")).toBe("sandbox");
+    expect(new Uint8Array(await served.arrayBuffer())).toEqual(WEBP);
+  });
+
   it("refuses paths the upload service could not have produced", async () => {
-    const res = await createApp().request(
+    const app = createApp();
+    const put = await app.request(
+      "/api/upload/local/uploads%2F..%2F..%2Fescape.webp",
+      { method: "PUT", body: WEBP },
+    );
+    expect(put.status).toBe(404);
+
+    const get = await app.request(
       "/api/upload/local/uploads%2F..%2F..%2Fpackage.json",
     );
-    expect(res.status).toBe(404);
+    expect(get.status).toBe(404);
   });
 });

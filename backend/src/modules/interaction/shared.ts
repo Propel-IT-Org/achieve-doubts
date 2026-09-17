@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import { isOwnUploadUrl } from "../upload/upload.util";
+import { checkAttachmentUrl } from "../upload/upload.util";
 
 /** Shape shared by the solution/thread/comment "add media" request bodies. */
 export type MediaInput = {
@@ -16,15 +16,19 @@ export function hasAtLeastOneMediaField(data: MediaInput): boolean {
   return Boolean(data.text || data.imageUrl || data.audioUrl);
 }
 
-/** Rejects media URLs that didn't come from our own presign flow. */
-export function validateMediaUrls(input: MediaInput): string | null {
-  if (input.imageUrl && !isOwnUploadUrl(input.imageUrl)) {
-    return "imageUrl must be a URL returned by the upload presign flow";
-  }
-  if (input.audioUrl && !isOwnUploadUrl(input.audioUrl)) {
-    return "audioUrl must be a URL returned by the upload presign flow";
-  }
-  return null;
+/**
+ * Checks each attachment URL on a solution, follow-up or comment — see
+ * {@link checkAttachmentUrl}. Returns a message to show the user, or null.
+ */
+export function checkMediaUrls(
+  posterId: string,
+  input: MediaInput,
+): string | null {
+  return (
+    (input.imageUrl && checkAttachmentUrl(input.imageUrl, posterId, "image")) ||
+    (input.audioUrl && checkAttachmentUrl(input.audioUrl, posterId, "audio")) ||
+    null
+  );
 }
 
 /**

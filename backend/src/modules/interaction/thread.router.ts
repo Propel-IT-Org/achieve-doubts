@@ -3,7 +3,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import type { AppEnv } from "../../lib/di";
 import { requireAuth, requirePermission } from "../../middleware/auth";
-import { parseIdParam, validateMediaUrls, zodErrorHook } from "./shared";
+import { checkMediaUrls, parseIdParam, zodErrorHook } from "./shared";
 import { createThreadMessageSchema } from "./thread.schema";
 
 export const threadRouter = new Hono<AppEnv>()
@@ -61,7 +61,7 @@ export const threadRouter = new Hono<AppEnv>()
       }
 
       const input = c.req.valid("json");
-      const mediaError = validateMediaUrls(input);
+      const mediaError = checkMediaUrls(c.var.user.id, input);
       if (mediaError) return fail(c, 400, "VALIDATION_FAILED", mediaError);
 
       const authorSide: "asker" | "solver" = isAsker ? "asker" : "solver";

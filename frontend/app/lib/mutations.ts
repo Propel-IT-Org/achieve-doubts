@@ -255,15 +255,27 @@ export function useMarkAllNotificationsRead() {
 // ---------- uploads ----------
 
 /**
- * Uploads a file and returns its public URL.
+ * Uploads a file straight to object storage and returns its public URL.
  *
- * Images are compressed in the browser first, which is what saves students'
- * mobile data. The API still decodes and normalises every upload, so the
- * server — not this function — decides what gets stored.
+ * Images are compressed here first (lib/image.ts). The file never passes
+ * through the API; the server checks it when it is attached to a question,
+ * solution or reply.
  */
 export async function uploadFile(file: File): Promise<string> {
   const body = file.type.startsWith("image/") ? await compressImage(file) : file;
-  const res = await api.api.upload.$post({ form: { file: body } });
-  const { url } = await unwrap<{ url: string }>(res);
-  return url;
+
+  const res = await api.api.upload.presign.$post({
+    json: { contentType: body.type as never, size: body.size },
+  });
+  const { uploadUrl, publicUrl, method, headers } = await unwrap<{
+    uploadUrl: string;
+    publicUrl: string;
+    method: string;
+    headers: Record<string, string>;
+  }>(res);
+
+  const put = await fetch(uploadUrl, { method, body, headers });
+  if (!put.ok) throw new Error("Upload failed");
+
+  return publicUrl;
 }

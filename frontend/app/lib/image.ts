@@ -7,10 +7,9 @@
  * hundred KB, with no visible loss for handwriting, printed text or diagrams —
  * and that is what a student on mobile data actually sends.
  *
- * The server re-validates every upload regardless (backend
- * upload.media.ts). A WebP produced here passes through it untouched, so the
- * image isn't compressed twice; Safari's JPEG fallback is converted to WebP
- * there.
+ * Uploads go straight from the browser to object storage through a presigned
+ * URL, so this is the only place an image is compressed. The server checks
+ * the stored file's size and type when it is attached to a post.
  *
  * Re-encoding also discards EXIF metadata, which on phone photos often
  * includes the GPS position where the picture was taken.
