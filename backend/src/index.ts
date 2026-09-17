@@ -14,7 +14,6 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { type ApiErrorBody, codeForStatus, toErrorBody } from "./lib/errors";
 import { type AppContainer, type AppEnv, container } from "./lib/di";
 import { isDraining } from "./lib/lifecycle";
-import { requireAuth, requirePermission } from "./middleware/auth";
 import { createRateLimiter, sessionOrIpKey } from "./middleware/rate-limit";
 import { adminRouter } from "./modules/admin/admin.router";
 import { authRouter } from "./modules/auth/auth.router";
@@ -64,14 +63,10 @@ export function createApp(customContainer: AppContainer = container) {
           : ["http://localhost:5173", "http://localhost:3000"]),
       ],
       credentials: true,
-      allowHeaders: [
-        "Content-Type",
-        "Authorization",
-        "X-Achieve-Auth",
-        "Cookie",
-      ],
-      allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-      exposeHeaders: ["Content-Length"],
+      // Auth rides on cookies, and the Achieve handshake is server-to-server
+      // (no CORS), so JSON's Content-Type is the only header to allow.
+      allowHeaders: ["Content-Type"],
+      allowMethods: ["GET", "POST", "PUT", "DELETE"],
       maxAge: 600,
     }),
   );

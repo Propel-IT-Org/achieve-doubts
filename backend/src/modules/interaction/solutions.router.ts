@@ -1,9 +1,9 @@
-import { fail } from "../../lib/errors";
+import { fail, zodErrorHook } from "../../lib/errors";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import type { AppEnv } from "../../lib/di";
 import { requireAuth, requirePermission } from "../../middleware/auth";
-import { parseIdParam, zodErrorHook } from "./shared";
+import { parseIdParam } from "./shared";
 import { createSolutionSchema, ratingSchema } from "./solutions.schema";
 
 /** Roles allowed to delete someone else's solution, not just their own. */

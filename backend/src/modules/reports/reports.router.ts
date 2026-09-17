@@ -26,17 +26,11 @@ export const reportsRouter = new Hono<AppEnv>()
         .get("reports")
         .createReport(questionId, c.var.user.id, reason, text);
 
-      if ("error" in result) {
+      if (result.error) {
         // The service picks the status (404 unknown question, 403 not the
         // asker, 400 not solved yet, 409 already reported), so the code
         // follows from it.
-        const status = result.status ?? 400;
-        return fail(
-          c,
-          status,
-          codeForStatus(status),
-          result.error ?? "Report could not be created",
-        );
+        return fail(c, result.status, codeForStatus(result.status), result.error);
       }
       return c.json(result.report, 201);
     },

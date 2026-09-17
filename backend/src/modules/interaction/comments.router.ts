@@ -1,10 +1,10 @@
-import { fail } from "../../lib/errors";
+import { fail, zodErrorHook } from "../../lib/errors";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import type { AppEnv } from "../../lib/di";
 import { requireAuth, requirePermission } from "../../middleware/auth";
 import { createCommentSchema } from "./comments.schema";
-import { parseIdParam, zodErrorHook } from "./shared";
+import { parseIdParam } from "./shared";
 
 export const commentsRouter = new Hono<AppEnv>()
   // Public: guests can read the discussion even though they can't post.
@@ -13,6 +13,7 @@ export const commentsRouter = new Hono<AppEnv>()
     if (!questionId) return fail(c, 400, "VALIDATION_FAILED", "Invalid question id");
 
     const comments = await c.var.di.get("comments").listComments(questionId);
+    if (!comments) return fail(c, 404, "NOT_FOUND", "Question not found");
     return c.json({ comments });
   })
   .post(

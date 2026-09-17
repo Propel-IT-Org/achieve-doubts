@@ -2,7 +2,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { admin } from "better-auth/plugins";
 import { username } from "better-auth/plugins/username";
-import { createDatabase, type DB } from "../db";
+import type { DB } from "../db";
 import * as schema from "../db/schema";
 import { env } from "../env";
 import { achieveSsoPlugin } from "./achieve-sso-plugin";
@@ -81,6 +81,10 @@ export function createAuth(database: DB) {
     session: {
       cookieCache: {
         enabled: true,
+        // A cached session is trusted without a database read, so a ban or a
+        // role change reaches a signed-in user only when the cache expires.
+        // One minute, down from better-auth's five.
+        maxAge: 60,
       },
     },
   });
@@ -93,4 +97,3 @@ export type AuthType = {
   user: User | null;
   session: Session | null;
 };
-export const auth = createAuth(createDatabase());

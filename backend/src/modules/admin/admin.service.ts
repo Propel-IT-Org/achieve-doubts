@@ -5,6 +5,7 @@ import {
   eq,
   gte,
   ilike,
+  isNotNull,
   isNull,
   lt,
   lte,
@@ -26,7 +27,8 @@ import {
 } from "../../db/schema";
 import type { Auth } from "../../lib/auth";
 import type { AppRole } from "../../lib/permissions";
-import { countPendingFollowups } from "../profiles/solver-stats.util";
+import { containsPattern } from "../interaction/shared";
+import { pendingFollowupCondition } from "../profiles/solver-stats.util";
 import type { CreateSolverInput, QuotaInput, RangeQuery } from "./admin.schema";
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
@@ -42,6 +44,12 @@ function upperBound(column: AnyColumn, to: string) {
   const nextDay = new Date(`${to}T00:00:00Z`);
   nextDay.setUTCDate(nextDay.getUTCDate() + 1);
   return lt(column, nextDay);
+}
+
+/** The last instant a range includes, for storing it on a payout period. */
+function rangeEnd(to: string): Date {
+  if (!DATE_ONLY.test(to)) return new Date(to);
+  return new Date(`${to}T23:59:59.999Z`);
 }
 
 const batchBanReason = (batchId: string) => `Batch ${batchId} deactivated`;
@@ -71,7 +79,7 @@ export class AdminService {
     const search = q?.trim();
     const filters = [eq(user.role, "student")];
     if (search) {
-      const like = `%${search}%`;
+      const like = containsPattern(search);
       const match = or(
         ilike(user.name, like),
         ilike(user.email, like),
@@ -196,34 +204,40 @@ export class AdminService {
       .where(sql`${user.role} in ('solver','adminSolver')`)
       .orderBy(desc(user.createdAt));
 
-    return Promise.all(
-      rows.map(async (row) => {
-        const [agg] = await this.db
-          .select({
-            solved: sql<number>`count(*) filter (where ${questions.status} in ('answered','satisfied','unsatisfied'))`,
-            satisfied: sql<number>`count(*) filter (where ${questions.status} = 'satisfied')`,
-            unsatisfied: sql<number>`count(*) filter (where ${questions.status} = 'unsatisfied')`,
-          })
-          .from(questions)
-          .where(
-            and(eq(questions.solverId, row.id), isNull(questions.deletedAt)),
-          );
+    // One grouped pass over questions for every solver, not two queries each.
+    const aggregates = await this.db
+      .select({
+        solverId: questions.solverId,
+        solved: sql<number>`count(*) filter (where ${questions.status} in ('answered','satisfied','unsatisfied'))`,
+        satisfied: sql<number>`count(*) filter (where ${questions.status} = 'satisfied')`,
+        unsatisfied: sql<number>`count(*) filter (where ${questions.status} = 'unsatisfied')`,
+        pending: sql<number>`count(*) filter (where ${pendingFollowupCondition()})`,
+      })
+      .from(questions)
+      .where(
+        and(
+          isNotNull(questions.solverId),
+          isNull(questions.deletedAt),
+        ),
+      )
+      .groupBy(questions.solverId);
+    const bySolver = new Map(aggregates.map((agg) => [agg.solverId, agg]));
 
-        const satisfied = Number(agg?.satisfied ?? 0);
-        const unsatisfied = Number(agg?.unsatisfied ?? 0);
-
-        return {
-          ...row,
-          isAdminSolver: row.role === "adminSolver",
-          solved: Number(agg?.solved ?? 0),
-          satisfactionRate:
-            satisfied + unsatisfied > 0
-              ? satisfied / (satisfied + unsatisfied)
-              : null,
-          pendingFollowups: await countPendingFollowups(this.db, row.id),
-        };
-      }),
-    );
+    return rows.map((row) => {
+      const agg = bySolver.get(row.id);
+      const satisfied = Number(agg?.satisfied ?? 0);
+      const unsatisfied = Number(agg?.unsatisfied ?? 0);
+      return {
+        ...row,
+        isAdminSolver: row.role === "adminSolver",
+        solved: Number(agg?.solved ?? 0),
+        satisfactionRate:
+          satisfied + unsatisfied > 0
+            ? satisfied / (satisfied + unsatisfied)
+            : null,
+        pendingFollowups: Number(agg?.pending ?? 0),
+      };
+    });
   }
 
   async createSolver(
@@ -636,31 +650,35 @@ export class AdminService {
   ) {
     const preview = await this.payoutPreview(from, to);
 
-    const [period] = await this.db
-      .insert(payoutPeriods)
-      .values({
-        fromDate: new Date(from),
-        toDate: new Date(to),
-        status: "draft",
-        note,
-      })
-      .returning();
+    // One transaction, so a failure can't leave a period with no lines.
+    const period = await this.db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(payoutPeriods)
+        .values({
+          fromDate: new Date(from),
+          toDate: rangeEnd(to),
+          status: "draft",
+          note,
+        })
+        .returning();
 
-    if (!period) throw new Error("Failed to create payout period");
+      if (!created) throw new Error("Failed to create payout period");
 
-    if (preview.length > 0) {
-      await this.db.insert(payoutLines).values(
-        preview.map((line) => ({
-          periodId: period.id,
-          solverId: line.solverId as string,
-          answered: line.answered,
-          satisfied: line.satisfied,
-          unsatisfied: line.unsatisfied,
-          unrated: line.unrated,
-          avgRespMin: line.avgRespMin?.toString() ?? null,
-        })),
-      );
-    }
+      if (preview.length > 0) {
+        await tx.insert(payoutLines).values(
+          preview.map((line) => ({
+            periodId: created.id,
+            solverId: line.solverId as string,
+            answered: line.answered,
+            satisfied: line.satisfied,
+            unsatisfied: line.unsatisfied,
+            unrated: line.unrated,
+            avgRespMin: line.avgRespMin?.toString() ?? null,
+          })),
+        );
+      }
+      return created;
+    });
 
     await this.audit(actorId, "payout.snapshot", "payout_period", String(period.id));
     return { period, lines: preview.length };

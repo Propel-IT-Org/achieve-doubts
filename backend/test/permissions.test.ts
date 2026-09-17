@@ -5,20 +5,16 @@ import type { AppEnv } from "../src/lib/di";
 import { buildContainer } from "../src/lib/di";
 import {
   optionalAuth,
+  requireAuth,
   requirePermission,
-  requireRole,
 } from "../src/middleware/auth";
 
 /**
- * Regression coverage for the permission guards:
- *   - requirePermission's `if (!hasPermission)` used to check the truthiness
- *     of the whole `{ error, success }` result object, which is always
- *     truthy — the check could never fail.
- *   - requireRole defaulted a null/missing role to "student" instead of
- *     denying, silently granting student access to role-less users.
- * Neither had coverage, which is how both shipped.
+ * Regression coverage for the permission guard. It once checked the
+ * truthiness of better-auth's whole `{ error, success }` result, which is
+ * always truthy, so it could never fail; and a role-less user was once
+ * treated as a student. Neither had coverage, which is how both shipped.
  */
-
 function makeApp(overrides: Record<string, unknown>) {
   let container = buildContainer();
   for (const [key, value] of Object.entries(overrides)) {
@@ -35,102 +31,65 @@ function makeApp(overrides: Record<string, unknown>) {
   return app;
 }
 
-function mockAuth(options: {
-  user: { id: string; role: string | null } | null;
-  permissionSuccess?: boolean;
-}) {
+function mockAuth(user: { id: string; role: string | null } | null) {
   return {
     api: {
       getSession: async () =>
-        options.user
-          ? { user: options.user, session: { id: "mock-session" } }
-          : null,
-      userHasPermission: async () => ({
-        success: options.permissionSuccess ?? false,
-        error: options.permissionSuccess ? null : "denied",
-      }),
+        user ? { user, session: { id: "mock-session" } } : null,
     },
   };
 }
 
-describe("requireRole", () => {
-  it("denies an unauthenticated request", async () => {
-    const app = makeApp({ auth: mockAuth({ user: null }) });
-    app.get("/x", requireRole(["student"]), (c) => c.json({ ok: true }));
-
-    expect((await app.request("/x")).status).toBe(401);
-  });
-
-  it("denies a session with a null role instead of defaulting to student", async () => {
-    const app = makeApp({ auth: mockAuth({ user: { id: "u1", role: null } }) });
-    app.get("/x", requireRole(["student"]), (c) => c.json({ ok: true }));
-
-    expect((await app.request("/x")).status).toBe(403);
-  });
-
-  it("denies a role outside the allow-list", async () => {
-    const app = makeApp({
-      auth: mockAuth({ user: { id: "u1", role: "solver" } }),
-    });
-    app.get("/x", requireRole(["student"]), (c) => c.json({ ok: true }));
-
-    expect((await app.request("/x")).status).toBe(403);
-  });
-
-  it("allows a matching role", async () => {
-    const app = makeApp({
-      auth: mockAuth({ user: { id: "u1", role: "student" } }),
-    });
-    app.get("/x", requireRole(["student"]), (c) => c.json({ ok: true }));
-
-    expect((await app.request("/x")).status).toBe(200);
-  });
-
-  it("accepts adminSolver as a first-class role", async () => {
-    const app = makeApp({
-      auth: mockAuth({ user: { id: "u1", role: "adminSolver" } }),
-    });
-    app.get("/x", requireRole(["solver", "adminSolver"]), (c) =>
-      c.json({ ok: true }),
-    );
-
-    expect((await app.request("/x")).status).toBe(200);
-  });
-});
+function guarded(user: { id: string; role: string | null } | null) {
+  const app = makeApp({ auth: mockAuth(user) });
+  app.get("/x", requireAuth, requirePermission({ question: ["override"] }), (c) =>
+    c.json({ ok: true }),
+  );
+  return app;
+}
 
 describe("requirePermission", () => {
-  it("denies when better-auth reports success: false — the check that could never fail before", async () => {
-    const app = makeApp({
-      auth: mockAuth({
-        user: { id: "u1", role: "student" },
-        permissionSuccess: false,
-      }),
-    });
-    app.get("/x", requirePermission({ question: ["override"] }), (c) =>
-      c.json({ ok: true }),
-    );
-
-    expect((await app.request("/x")).status).toBe(403);
+  it("rejects a guest with 401", async () => {
+    expect((await guarded(null).request("/x")).status).toBe(401);
   });
 
-  it("allows when better-auth reports success: true", async () => {
-    const app = makeApp({
-      auth: mockAuth({
-        user: { id: "u1", role: "adminSolver" },
-        permissionSuccess: true,
-      }),
-    });
-    app.get("/x", requirePermission({ question: ["override"] }), (c) =>
-      c.json({ ok: true }),
-    );
+  it("denies a role that lacks the verb", async () => {
+    const res = await guarded({ id: "u1", role: "solver" }).request("/x");
+    expect(res.status).toBe(403);
+  });
 
-    expect((await app.request("/x")).status).toBe(200);
+  it("allows a role that holds the verb", async () => {
+    const res = await guarded({ id: "u1", role: "adminSolver" }).request("/x");
+    expect(res.status).toBe(200);
+  });
+
+  it("denies a null role instead of defaulting to student", async () => {
+    const res = await guarded({ id: "u1", role: null }).request("/x");
+    expect(res.status).toBe(403);
+  });
+
+  it("denies unknown roles, including inherited property names", async () => {
+    for (const role of ["superuser", "constructor", "toString"]) {
+      const res = await guarded({ id: "u1", role }).request("/x");
+      expect(res.status).toBe(403);
+    }
+  });
+
+  it("requires every requested verb", async () => {
+    const app = makeApp({ auth: mockAuth({ id: "u1", role: "student" }) });
+    app.get(
+      "/x",
+      requireAuth,
+      requirePermission({ question: ["create"], comment: ["delete"] }),
+      (c) => c.json({ ok: true }),
+    );
+    expect((await app.request("/x")).status).toBe(403);
   });
 });
 
 describe("optionalAuth", () => {
   it("passes through as a guest without rejecting", async () => {
-    const app = makeApp({ auth: mockAuth({ user: null }) });
+    const app = makeApp({ auth: mockAuth(null) });
     app.get("/x", optionalAuth, (c) => c.json({ guest: !c.var.user }));
 
     const res = await app.request("/x");
@@ -139,9 +98,7 @@ describe("optionalAuth", () => {
   });
 
   it("populates the user when a session exists", async () => {
-    const app = makeApp({
-      auth: mockAuth({ user: { id: "u1", role: "student" } }),
-    });
+    const app = makeApp({ auth: mockAuth({ id: "u1", role: "student" }) });
     app.get("/x", optionalAuth, (c) => c.json({ guest: !c.var.user }));
 
     expect(await (await app.request("/x")).json()).toEqual({ guest: false });

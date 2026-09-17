@@ -12,11 +12,12 @@ import type { CreateThreadMessageInput } from "./thread.schema";
 export class ThreadService {
   constructor(private db: DB) {}
 
+  /** A removed question's thread is closed to everyone. */
   async getQuestion(questionId: number) {
     const [question] = await this.db
       .select()
       .from(questions)
-      .where(eq(questions.id, questionId));
+      .where(and(eq(questions.id, questionId), isNull(questions.deletedAt)));
     return question ?? null;
   }
 
@@ -53,31 +54,33 @@ export class ThreadService {
     input: CreateThreadMessageInput,
     notifyUserId: string | null,
   ) {
-    const [message] = await this.db
-      .insert(threadMessages)
-      .values({
-        questionId,
-        authorId,
-        authorSide,
-        text: input.text,
-        imageUrl: input.imageUrl,
-        audioUrl: input.audioUrl,
-        audioSeconds: input.audioSeconds,
-      })
-      .returning();
+    return this.db.transaction(async (tx) => {
+      const [message] = await tx
+        .insert(threadMessages)
+        .values({
+          questionId,
+          authorId,
+          authorSide,
+          text: input.text,
+          imageUrl: input.imageUrl,
+          audioUrl: input.audioUrl,
+          audioSeconds: input.audioSeconds,
+        })
+        .returning();
 
-    if (!message) throw new Error("Failed to persist thread message");
+      if (!message) throw new Error("Failed to persist thread message");
 
-    if (notifyUserId) {
-      await this.db.insert(notifications).values({
-        type: "followup",
-        userId: notifyUserId,
-        questionId,
-        actorId: authorId,
-      });
-    }
+      if (notifyUserId) {
+        await tx.insert(notifications).values({
+          type: "followup",
+          userId: notifyUserId,
+          questionId,
+          actorId: authorId,
+        });
+      }
 
-    return shapeSoftDeletable(message);
+      return shapeSoftDeletable(message);
+    });
   }
 
   async deleteMessage(questionId: number, messageId: number, actorId: string) {
@@ -88,6 +91,7 @@ export class ThreadService {
         and(
           eq(threadMessages.id, messageId),
           eq(threadMessages.questionId, questionId),
+          isNull(threadMessages.deletedAt),
         ),
       )
       .returning();

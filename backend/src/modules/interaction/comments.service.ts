@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import type { DB } from "../../db";
 import { comments, notifications, questions } from "../../db/schema";
 import type { CreateCommentInput } from "./comments.schema";
@@ -13,7 +13,14 @@ export type CreateCommentResult =
 export class CommentsService {
   constructor(private db: DB) {}
 
+  /** Null when the question doesn't exist or was removed. */
   async listComments(questionId: number) {
+    const [question] = await this.db
+      .select({ id: questions.id })
+      .from(questions)
+      .where(and(eq(questions.id, questionId), isNull(questions.deletedAt)));
+    if (!question) return null;
+
     const rows = await this.db
       .select()
       .from(comments)
@@ -39,47 +46,49 @@ export class CommentsService {
       .where(eq(questions.id, questionId));
     if (!question || question.deletedAt) return { error: "not_found" as const };
 
-    const [row] = await this.db
-      .insert(comments)
-      .values({
-        questionId,
-        authorId,
-        text: input.text,
-        imageUrl: input.imageUrl,
-        audioUrl: input.audioUrl,
-        audioSeconds: input.audioSeconds,
-      })
-      .returning();
+    return this.db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(comments)
+        .values({
+          questionId,
+          authorId,
+          text: input.text,
+          imageUrl: input.imageUrl,
+          audioUrl: input.audioUrl,
+          audioSeconds: input.audioSeconds,
+        })
+        .returning();
 
-    if (!row) throw new Error("Failed to persist comment");
+      if (!row) throw new Error("Failed to persist comment");
 
-    const notifRows: (typeof notifications.$inferInsert)[] = [];
-    if (question.askerId !== authorId) {
-      notifRows.push({
-        type: "comment",
-        userId: question.askerId,
-        questionId,
-        actorId: authorId,
-      });
-    }
-    if (
-      question.solverId &&
-      ANSWERED_STATUSES.includes(
-        question.status as (typeof ANSWERED_STATUSES)[number],
-      )
-    ) {
-      notifRows.push({
-        type: "comment",
-        userId: question.solverId,
-        questionId,
-        actorId: authorId,
-      });
-    }
-    if (notifRows.length > 0) {
-      await this.db.insert(notifications).values(notifRows);
-    }
+      const notifRows: (typeof notifications.$inferInsert)[] = [];
+      if (question.askerId !== authorId) {
+        notifRows.push({
+          type: "comment",
+          userId: question.askerId,
+          questionId,
+          actorId: authorId,
+        });
+      }
+      if (
+        question.solverId &&
+        ANSWERED_STATUSES.includes(
+          question.status as (typeof ANSWERED_STATUSES)[number],
+        )
+      ) {
+        notifRows.push({
+          type: "comment",
+          userId: question.solverId,
+          questionId,
+          actorId: authorId,
+        });
+      }
+      if (notifRows.length > 0) {
+        await tx.insert(notifications).values(notifRows);
+      }
 
-    return { comment: shapeSoftDeletable(row) };
+      return { comment: shapeSoftDeletable(row) };
+    });
   }
 
   async deleteComment(questionId: number, commentId: number, actorId: string) {
@@ -87,7 +96,11 @@ export class CommentsService {
       .update(comments)
       .set({ deletedAt: new Date(), deletedBy: actorId })
       .where(
-        and(eq(comments.id, commentId), eq(comments.questionId, questionId)),
+        and(
+          eq(comments.id, commentId),
+          eq(comments.questionId, questionId),
+          isNull(comments.deletedAt),
+        ),
       )
       .returning();
 

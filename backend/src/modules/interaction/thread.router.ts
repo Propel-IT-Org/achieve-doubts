@@ -1,9 +1,9 @@
-import { fail } from "../../lib/errors";
+import { fail, zodErrorHook } from "../../lib/errors";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import type { AppEnv } from "../../lib/di";
 import { requireAuth, requirePermission } from "../../middleware/auth";
-import { parseIdParam, zodErrorHook } from "./shared";
+import { parseIdParam } from "./shared";
 import { createThreadMessageSchema } from "./thread.schema";
 
 export const threadRouter = new Hono<AppEnv>()
@@ -16,6 +16,9 @@ export const threadRouter = new Hono<AppEnv>()
       if (!questionId) return fail(c, 400, "VALIDATION_FAILED", "Invalid question id");
 
       const service = c.var.di.get("thread");
+      if (!(await service.getQuestion(questionId))) {
+        return fail(c, 404, "NOT_FOUND", "Question not found");
+      }
       if (!(await service.hasActiveSolution(questionId))) {
         return c.json({ messages: [] });
       }

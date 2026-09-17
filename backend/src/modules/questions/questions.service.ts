@@ -23,6 +23,7 @@ import {
   threadMessages,
 } from "../../db/schema";
 import { env } from "../../env";
+import { containsPattern } from "../interaction/shared";
 import { pendingFollowupsWhere } from "../profiles/solver-stats.util";
 import type {
   CreateQuestionInput,
@@ -90,7 +91,7 @@ export class QuestionsService {
     if (query.subject) conditions.push(eq(questions.subjectId, query.subject));
     if (query.book) conditions.push(eq(questions.bookId, query.book));
     if (query.chapter) conditions.push(eq(questions.chapterId, query.chapter));
-    if (query.q) conditions.push(ilike(questions.text, `%${query.q}%`));
+    if (query.q) conditions.push(ilike(questions.text, containsPattern(query.q)));
     if (query.mine && viewerId) conditions.push(eq(questions.askerId, viewerId));
 
     if (decodedCursor) {
@@ -379,9 +380,13 @@ export class QuestionsService {
     newSolverId: string,
   ): Promise<OverrideResult> {
     return this.db.transaction(async (tx) => {
-      const existing = await tx.query.questions.findFirst({
-        where: eq(questions.id, questionId),
-      });
+      // FOR UPDATE: an unlock or expiry between this read and the UPDATE
+      // below would otherwise notify a solver who no longer held the lock.
+      const [existing] = await tx
+        .select({ solverId: questions.solverId })
+        .from(questions)
+        .where(eq(questions.id, questionId))
+        .for("update");
       const previousSolverId = existing?.solverId ?? null;
 
       const [updated] = await tx
@@ -406,6 +411,13 @@ export class QuestionsService {
         questionId: updated.id,
         solverId: newSolverId,
         action: "override",
+      });
+      await tx.insert(auditLog).values({
+        actorId: newSolverId,
+        action: "question.override",
+        entityType: "question",
+        entityId: String(questionId),
+        meta: { previousSolverId },
       });
 
       if (previousSolverId && previousSolverId !== newSolverId) {
@@ -443,7 +455,7 @@ export class QuestionsService {
 
       await tx.insert(auditLog).values({
         actorId,
-        action: "delete_question",
+        action: "question.delete",
         entityType: "question",
         entityId: String(questionId),
       });

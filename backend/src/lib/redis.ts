@@ -12,10 +12,6 @@ import { env } from "../env";
 
 let commandClient: RedisClient | null = null;
 
-export function redisEnabled(): boolean {
-  return Boolean(env.REDIS_URL);
-}
-
 /**
  * Client for ordinary commands (INCR, EXPIRE, PUBLISH). Created lazily —
  * Bun connects on first use, so constructing it never blocks startup.

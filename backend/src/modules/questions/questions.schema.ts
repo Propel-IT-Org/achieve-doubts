@@ -26,7 +26,7 @@ export const listQuestionsQuerySchema = z.object({
 	book: z.string().optional(),
 	chapter: z.coerce.number().int().positive().optional(),
 	status: z.enum(questionStatusValues).optional(),
-	q: z.string().optional(),
+	q: z.string().trim().max(200).optional(),
 	// Query params arrive as strings — coerce explicitly rather than
 	// z.coerce.boolean(), which treats any non-empty string (including
 	// "false") as true.

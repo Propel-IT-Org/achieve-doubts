@@ -46,7 +46,7 @@ export const adminRouter = new Hono<AppEnv>()
       const result = await c.var.di
         .get("reports")
         .resolveReport(id, c.var.user.id);
-      if ("error" in result) return fail(c, 404, "NOT_FOUND", result.error ?? "Request failed");
+      if (result.error) return fail(c, 404, "NOT_FOUND", result.error);
       return c.json(result.report);
     },
   )
@@ -113,7 +113,7 @@ export const adminRouter = new Hono<AppEnv>()
         .get("admin")
         .createSolver(c.req.valid("json"), c.req.raw.headers, c.var.user.id);
 
-      if ("error" in result) return fail(c, 409, "CONFLICT", result.error ?? "Request failed");
+      if (result.error) return fail(c, 409, "CONFLICT", result.error);
       return c.json(result.solver, 201);
     },
   )
@@ -177,7 +177,7 @@ export const adminRouter = new Hono<AppEnv>()
       const result = await c.var.di
         .get("admin")
         .createBatch(id, label, c.var.user.id);
-      if ("error" in result) return fail(c, 409, "CONFLICT", result.error ?? "Request failed");
+      if (result.error) return fail(c, 409, "CONFLICT", result.error);
       return c.json(result.batch, 201);
     },
   )
@@ -197,7 +197,7 @@ export const adminRouter = new Hono<AppEnv>()
           c.var.user.id,
         );
 
-      if ("error" in result) return fail(c, 404, "NOT_FOUND", result.error ?? "Request failed");
+      if (result.error) return fail(c, 404, "NOT_FOUND", result.error);
       return c.json({
         batch: result.batch,
         affectedStudents: result.affectedStudents,
@@ -279,7 +279,7 @@ export const adminRouter = new Hono<AppEnv>()
       const result = await c.var.di
         .get("admin")
         .markPayoutPaid(id, c.var.user.id);
-      if ("error" in result) return fail(c, 404, "NOT_FOUND", result.error ?? "Request failed");
+      if (result.error) return fail(c, 404, "NOT_FOUND", result.error);
       return c.json(result.period);
     },
   );

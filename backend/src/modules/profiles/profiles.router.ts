@@ -200,57 +200,57 @@ export const profilesRouter = new Hono<AppEnv>()
 const HOME_STATS_TTL = 60;
 
 async function computeHomeStats(db: DB) {
-    const [agg] = await db
-      .select({
-        solved: sql<number>`count(*) filter (where ${questions.status} in ('answered','satisfied','unsatisfied'))`,
-        satisfied: sql<number>`count(*) filter (where ${questions.status} = 'satisfied')`,
-        unsatisfied: sql<number>`count(*) filter (where ${questions.status} = 'unsatisfied')`,
-        medianMatchSec: sql<
-          string | null
-        >`percentile_cont(0.5) within group (order by ${questions.matchedAfterSec}) filter (where ${questions.matchedAfterSec} is not null)`,
-      })
-      .from(questions)
-      .where(isNull(questions.deletedAt));
+  const [agg] = await db
+    .select({
+      solved: sql<number>`count(*) filter (where ${questions.status} in ('answered','satisfied','unsatisfied'))`,
+      satisfied: sql<number>`count(*) filter (where ${questions.status} = 'satisfied')`,
+      unsatisfied: sql<number>`count(*) filter (where ${questions.status} = 'unsatisfied')`,
+      medianMatchSec: sql<
+        string | null
+      >`percentile_cont(0.5) within group (order by ${questions.matchedAfterSec}) filter (where ${questions.matchedAfterSec} is not null)`,
+    })
+    .from(questions)
+    .where(isNull(questions.deletedAt));
 
-    const [answerTime] = await db
-      .select({
-        medianAnswerMin: sql<
-          string | null
-        >`percentile_cont(0.5) within group (order by extract(epoch from (${solutions.createdAt} - ${questions.lockedAt})) / 60)`,
-      })
-      .from(solutions)
-      .innerJoin(questions, eq(solutions.questionId, questions.id))
-      .where(
-        and(isNull(solutions.deletedAt), sql`${questions.lockedAt} is not null`),
-      );
+  const [answerTime] = await db
+    .select({
+      medianAnswerMin: sql<
+        string | null
+      >`percentile_cont(0.5) within group (order by extract(epoch from (${solutions.createdAt} - ${questions.lockedAt})) / 60)`,
+    })
+    .from(solutions)
+    .innerJoin(questions, eq(solutions.questionId, questions.id))
+    .where(
+      and(isNull(solutions.deletedAt), sql`${questions.lockedAt} is not null`),
+    );
 
-    // No presence tracking exists in this system — this is a stand-in for
-    // "solvers online", not a live count.
-    const [solverCount] = await db
-      .select({ n: sql<number>`count(*)` })
-      .from(user)
-      .where(
-        and(
-          sql`${user.role} in ('solver','adminSolver')`,
-          sql`coalesce(${user.banned}, false) = false`,
-        ),
-      );
+  // No presence tracking exists in this system — this is a stand-in for
+  // "solvers online", not a live count.
+  const [solverCount] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(user)
+    .where(
+      and(
+        sql`${user.role} in ('solver','adminSolver')`,
+        sql`coalesce(${user.banned}, false) = false`,
+      ),
+    );
 
-    const satisfied = Number(agg?.satisfied ?? 0);
-    const unsatisfied = Number(agg?.unsatisfied ?? 0);
+  const satisfied = Number(agg?.satisfied ?? 0);
+  const unsatisfied = Number(agg?.unsatisfied ?? 0);
 
-    return {
-      solved: Number(agg?.solved ?? 0),
-      satisfactionRate:
-        satisfied + unsatisfied > 0
-          ? satisfied / (satisfied + unsatisfied)
-          : null,
-      medianMatchSeconds: agg?.medianMatchSec
-        ? Number(agg.medianMatchSec)
+  return {
+    solved: Number(agg?.solved ?? 0),
+    satisfactionRate:
+      satisfied + unsatisfied > 0
+        ? satisfied / (satisfied + unsatisfied)
         : null,
-      medianAnswerMinutes: answerTime?.medianAnswerMin
-        ? Number(answerTime.medianAnswerMin)
-        : null,
-      solversAvailable: Number(solverCount?.n ?? 0),
-    };
+    medianMatchSeconds: agg?.medianMatchSec
+      ? Number(agg.medianMatchSec)
+      : null,
+    medianAnswerMinutes: answerTime?.medianAnswerMin
+      ? Number(answerTime.medianAnswerMin)
+      : null,
+    solversAvailable: Number(solverCount?.n ?? 0),
+  };
 }

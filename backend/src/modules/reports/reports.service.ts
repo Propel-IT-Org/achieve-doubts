@@ -99,10 +99,11 @@ export class ReportsService {
     const [row] = await this.db
       .update(reports)
       .set({ status: "resolved", resolvedAt: new Date(), resolvedBy: staffId })
-      .where(eq(reports.id, id))
+      // Only an open report: resolving twice would overwrite who resolved it.
+      .where(and(eq(reports.id, id), eq(reports.status, "open")))
       .returning();
 
-    if (!row) return { error: "Report not found" as const };
+    if (!row) return { error: "No open report with that id" as const };
 
     await this.db.insert(auditLog).values({
       actorId: staffId,

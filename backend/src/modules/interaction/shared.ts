@@ -1,7 +1,5 @@
-import type { Context } from "hono";
-
 /** Shape shared by the solution/thread/comment "add media" request bodies. */
-export type MediaInput = {
+type MediaInput = {
   text?: string;
   imageUrl?: string;
   audioUrl?: string;
@@ -16,10 +14,12 @@ export function hasAtLeastOneMediaField(data: MediaInput): boolean {
 }
 
 /**
- * Re-exported so the interaction routers keep their existing import site.
- * The hook itself now lives with the rest of the error contract.
+ * Escapes LIKE/ILIKE wildcards, so a search for "50%" matches that text
+ * rather than every row starting with "50".
  */
-export { zodErrorHook } from "../../lib/errors";
+export function containsPattern(text: string): string {
+  return `%${text.replace(/[\\%_]/g, "\\$&")}%`;
+}
 
 /** Parses a `:id`-style route param into a positive integer, or null. */
 export function parseIdParam(raw: string | undefined): number | null {

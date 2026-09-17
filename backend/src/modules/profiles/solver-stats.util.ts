@@ -61,13 +61,12 @@ export async function computeSolverStats(
 }
 
 /**
- * The follow-up-block predicate: a question this solver answered, not yet
- * satisfied, whose latest non-deleted thread message came from the asker —
- * i.e. the ball is in the solver's court.
+ * The follow-up-block predicate: an answered question, not yet satisfied,
+ * whose latest non-deleted thread message came from the asker — i.e. the
+ * ball is in the solver's court.
  */
-export function pendingFollowupsWhere(solverId: string) {
+export function pendingFollowupCondition() {
   return and(
-    eq(questions.solverId, solverId),
     inArray(questions.status, ["answered", "unsatisfied"]),
     isNull(questions.deletedAt),
     sql`(
@@ -80,21 +79,14 @@ export function pendingFollowupsWhere(solverId: string) {
   );
 }
 
+export function pendingFollowupsWhere(solverId: string) {
+  return and(eq(questions.solverId, solverId), pendingFollowupCondition());
+}
+
 export async function listPendingFollowups(db: DB, solverId: string) {
   return db
     .select()
     .from(questions)
     .where(pendingFollowupsWhere(solverId))
     .orderBy(sql`${questions.answeredAt} asc`);
-}
-
-export async function countPendingFollowups(
-  db: DB,
-  solverId: string,
-): Promise<number> {
-  const [row] = await db
-    .select({ n: sql<number>`count(*)` })
-    .from(questions)
-    .where(pendingFollowupsWhere(solverId));
-  return Number(row?.n ?? 0);
 }

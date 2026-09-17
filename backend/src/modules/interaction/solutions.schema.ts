@@ -19,5 +19,3 @@ export type CreateSolutionInput = z.infer<typeof createSolutionSchema>;
 export const ratingSchema = z.object({
   value: z.enum(["satisfied", "unsatisfied"]),
 });
-
-export type RatingInput = z.infer<typeof ratingSchema>;
