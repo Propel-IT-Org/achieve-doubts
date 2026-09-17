@@ -1,4 +1,4 @@
-import { createDatabase } from "..";
+import type { DB } from "..";
 import { books, chapters, subjects } from "../schema";
 
 /**
@@ -231,7 +231,7 @@ const SUBJECTS: Array<{
 	},
 ];
 
-export async function seedTaxonomy(db: ReturnType<typeof createDatabase>) {
+export async function seedTaxonomy(db: DB) {
 	let subjectSort = 0;
 	for (const subject of SUBJECTS) {
 		await db
@@ -277,11 +277,7 @@ export async function seedTaxonomy(db: ReturnType<typeof createDatabase>) {
 	}
 }
 
-// Allow `bun run src/db/seed/taxonomy.ts` directly, in addition to being
-// imported and composed by a future combined seed entrypoint.
-if (import.meta.main) {
-	const db = createDatabase();
-	await seedTaxonomy(db);
-	console.log("Taxonomy seeded.");
-	process.exit(0);
-}
+// Run with `bun run db:seed` (-> `src/main.ts seed`). There is deliberately
+// no `import.meta.main` block here: once bundled into dist/main.js,
+// import.meta.main is true for the bundle, so such a block would seed the
+// database and exit every time the server started.

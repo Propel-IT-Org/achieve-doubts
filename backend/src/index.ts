@@ -11,6 +11,7 @@ import { env } from "./env";
 import { startLockSweeper } from "./jobs/lock-sweeper";
 import { type ApiErrorBody, toErrorBody } from "./lib/errors";
 import { type AppContainer, type AppEnv, container } from "./lib/di";
+import { isDraining } from "./lib/lifecycle";
 import { requireAuth, requirePermission } from "./middleware/auth";
 import { createRateLimiter } from "./middleware/rate-limit";
 import { adminRouter } from "./modules/admin/admin.router";
@@ -127,7 +128,13 @@ export function createApp(customContainer: AppContainer = container) {
   return (
     app
       .basePath("/api")
-      .get("/healthz", (c) => c.json({ ok: true }))
+      // 503 while draining, so Traefik and the container health check take
+      // this replica out of rotation before it stops. See src/main.ts.
+      .get("/healthz", (c) =>
+        isDraining()
+          ? c.json({ ok: false, draining: true }, 503)
+          : c.json({ ok: true, draining: false }),
+      )
       .route("/auth", authRouter)
       .route("/upload", uploadRouter)
       .route("/subjects", taxonomyRouter)

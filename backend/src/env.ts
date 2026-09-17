@@ -35,6 +35,14 @@ const envSchema = z.object({
 	// Comma-separated IP allowlist for Achieve's backend. Empty/unset = allow-all (dev only).
 	ACHIEVE_ALLOWED_IPS: z.string().optional(),
 	LOCK_TIMEOUT_MINUTES: z.coerce.number().default(15),
+	// Graceful shutdown (src/main.ts). The drain must outlast one Traefik
+	// health-check interval plus its timeout (10s + 5s in compose.yml), so the
+	// replica is out of rotation before it stops accepting connections.
+	SHUTDOWN_DRAIN_MS: z.coerce.number().int().min(0).default(15_000),
+	// After draining, how long in-flight requests get before the remaining
+	// connections are force-closed. Drain + this must stay under the
+	// container's stop_grace_period.
+	SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().min(0).default(10_000),
 	S3_ENDPOINT: z.string().optional(),
 	// R2 accepts "auto". Backblaze B2 needs the bucket's real region (e.g.
 	// "us-west-004"), or SigV4 signatures won't match.
