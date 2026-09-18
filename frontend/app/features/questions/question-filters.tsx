@@ -46,7 +46,7 @@ function useParamSetter() {
 export function QuestionToolbar({
   taxonomySelects,
 }: {
-  /** The subject/paper/chapter selects, wrapped in the caller's boundary. */
+  /** The subject/book/chapter selects, wrapped in the caller's boundary. */
   taxonomySelects: React.ReactNode;
 }) {
   const [params, setParam] = useParamSetter();
@@ -116,7 +116,7 @@ export function QuestionToolbar({
 export function TaxonomySelectsPlaceholder() {
   return (
     <>
-      {["Subject", "Paper", "Chapter"].map((label) => (
+      {["Subject", "Book", "Chapter"].map((label) => (
         <label className="field" key={label}>
           <span>{label}</span>
           <select className="select" disabled>
@@ -128,7 +128,7 @@ export function TaxonomySelectsPlaceholder() {
   );
 }
 
-/** Cascading subject → paper → chapter selects. Suspends on the taxonomy. */
+/** Cascading subject → book → chapter selects. Suspends on the taxonomy. */
 export function TaxonomySelects() {
   const subjects: Subject[] = useSubjects();
   const [params, setParam] = useParamSetter();
@@ -159,14 +159,14 @@ export function TaxonomySelects() {
       </label>
 
       <label className="field">
-        <span>Paper</span>
+        <span>Book</span>
         <select
           className="select"
           value={book}
           disabled={!subject}
           onChange={(e) => setParam("book", e.target.value, ["chapter"])}
         >
-          <option value="">{subject ? "All papers" : "Choose a subject first"}</option>
+          <option value="">{subject ? "All books" : "Choose a subject first"}</option>
           {books.map((b) => (
             <option key={b.id} value={b.id}>
               {b.nameEn}
@@ -183,7 +183,7 @@ export function TaxonomySelects() {
           disabled={!book}
           onChange={(e) => setParam("chapter", e.target.value)}
         >
-          <option value="">{book ? "All chapters" : "Choose a paper first"}</option>
+          <option value="">{book ? "All chapters" : "Choose a book first"}</option>
           {chapters.map((ch) => (
             <option key={ch.id} value={String(ch.id)}>
               {ch.number}. {ch.nameEn}

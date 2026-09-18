@@ -53,7 +53,7 @@ export const questionsRouter = new Hono<AppEnv>()
             c,
             400,
             "VALIDATION_FAILED",
-            "That chapter or book doesn't belong to the selected subject and paper",
+            "That chapter doesn't belong to the selected book and subject",
           );
         }
         const message =

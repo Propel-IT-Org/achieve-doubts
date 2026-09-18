@@ -10,8 +10,6 @@ function loadTaxonomy(db: DB) {
 	return db.query.subjects.findMany({
 		orderBy: (s, { asc }) => [asc(s.sort)],
 		with: {
-			// Each names its paper when it covers only one (Biology).
-			textbooks: { orderBy: (t, { asc }) => [asc(t.sort)] },
 			books: {
 				orderBy: (b, { asc }) => [asc(b.sort)],
 				with: {

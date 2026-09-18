@@ -22,7 +22,7 @@ export function AskForm() {
 
   const form = useForm<AskValues>({
     resolver: zodResolver(askSchema),
-    defaultValues: { subjectId: "", bookId: "", chapterId: 0, textbookId: "", text: "" },
+    defaultValues: { subjectId: "", bookId: "", chapterId: 0, text: "" },
   });
   const {
     register,
@@ -37,7 +37,6 @@ export function AskForm() {
         subjectId: values.subjectId,
         bookId: values.bookId,
         chapterId: Number(values.chapterId),
-        textbookId: values.textbookId || null,
         text: values.text,
         photoUrl,
       });
