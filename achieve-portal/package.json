@@ -1,14 +1,15 @@
 {
-  "name": "@achieve/portal",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "typecheck": "wrangler types && tsc"
-  },
-  "devDependencies": {
-    "typescript": "^5.9.3",
-    "wrangler": "^4.133.0"
-  }
+	"name": "@achieve/portal",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "wrangler dev",
+		"deploy": "wrangler deploy",
+		"typecheck": "wrangler types && tsc"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.5.14",
+		"typescript": "^5.9.3",
+		"wrangler": "^4.133.0"
+	}
 }

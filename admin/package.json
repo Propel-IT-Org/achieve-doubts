@@ -6,7 +6,8 @@
     "build": "react-router build",
     "dev": "react-router dev --port 5174",
     "start": "vite preview --port 5174",
-    "typecheck": "react-router typegen && tsc"
+    "typecheck": "react-router typegen && tsc",
+    "lint": "biome check"
   },
   "dependencies": {
     "@achieve/doubts-backend": "workspace:*",
@@ -26,6 +27,7 @@
     "isbot": "^5"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.14",
     "@react-router/dev": "^8",
     "@tailwindcss/vite": "^4.2.2",
     "@types/node": "^22",

@@ -1,15 +1,30 @@
 {
-  "name": "achieve-doubts",
-  "workspaces": [
-    "frontend",
-    "admin",
-    "backend",
-    "achieve-portal"
-  ],
-  "devDependencies": {
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
-  }
+	"name": "achieve-doubts",
+	"workspaces": [
+		"frontend",
+		"admin",
+		"backend",
+		"achieve-portal"
+	],
+	"scripts": {
+		"build": "turbo run build",
+		"dev": "turbo run dev",
+		"lint": "turbo run lint",
+		"typecheck": "turbo run typecheck"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.5.14",
+		"@types/bun": "latest",
+		"turbo": "^2.10.13"
+	},
+	"peerDependencies": {
+		"typescript": "^5"
+	},
+	"packageManager": "bun@1.4.2",
+	"devEngines": {
+		"packageManager": {
+			"name": "bun",
+			"version": "1.4.2"
+		}
+	}
 }

@@ -1,0 +1,36 @@
+{
+	// Set Biome as the global default formatter
+	"editor.defaultFormatter": "biomejs.biome",
+
+	// Enable format on save
+	"editor.formatOnSave": true,
+
+	// Enable Biome code actions (organize imports, quick fixes) on save
+	"editor.codeActionsOnSave": {
+		"source.fixAll.biome": "explicit",
+		"source.organizeImports.biome": "explicit"
+	},
+
+	// (Optional) Explicitly lock Biome for JS/TS/JSON/CSS ecosystems
+	"[javascript]": {
+		"editor.defaultFormatter": "biomejs.biome"
+	},
+	"[typescript]": {
+		"editor.defaultFormatter": "biomejs.biome"
+	},
+	"[javascriptreact]": {
+		"editor.defaultFormatter": "biomejs.biome"
+	},
+	"[typescriptreact]": {
+		"editor.defaultFormatter": "biomejs.biome"
+	},
+	"[json]": {
+		"editor.defaultFormatter": "biomejs.biome"
+	},
+	"[jsonc]": {
+		"editor.defaultFormatter": "biomejs.biome"
+	},
+	"[css]": {
+		"editor.defaultFormatter": "biomejs.biome"
+	}
+}
