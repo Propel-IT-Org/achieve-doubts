@@ -295,19 +295,14 @@ export class AdminService {
     headers: Headers,
     actorId: string,
   ) {
+    // better-auth stores and matches emails lowercased; check the same way,
+    // or "Ana@x.com" would pass here and then collide in createUser.
+    const email = input.email.trim().toLowerCase();
     const [emailTaken] = await this.db
       .select({ id: user.id })
       .from(user)
-      .where(eq(user.email, input.email));
+      .where(eq(user.email, email));
     if (emailTaken) return { error: "That email is already in use" as const };
-
-    const [usernameTaken] = await this.db
-      .select({ id: user.id })
-      .from(user)
-      .where(eq(user.username, input.username));
-    if (usernameTaken) {
-      return { error: "That username is already in use" as const };
-    }
 
     if (input.phone) {
       const [phoneTaken] = await this.db
@@ -321,11 +316,10 @@ export class AdminService {
 
     const created = await this.auth.api.createUser({
       body: {
-        email: input.email,
+        email,
         password: input.password,
         name: input.name,
         role: "solver",
-        data: { username: input.username, displayUsername: input.username },
       },
       headers,
     });

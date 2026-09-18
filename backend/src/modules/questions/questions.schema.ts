@@ -15,8 +15,11 @@ export const questionIdParamSchema = z.object({
 
 export const createQuestionSchema = z.object({
 	subjectId: z.string().min(1),
+	// The paper ("Physics 1st paper"); see db/schema/taxonomy.ts.
 	bookId: z.string().min(1),
 	chapterId: z.coerce.number().int().positive(),
+	// Optional: the student's book may not be one of the listed textbooks.
+	textbookId: z.string().min(1).max(48).optional().nullable(),
 	text: z.string().min(15),
 	photoUrl: uploadUrl("image").optional().nullable(),
 });

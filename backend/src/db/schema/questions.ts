@@ -10,7 +10,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { user } from "./auth";
 import { questionStatusEnum, threadAuthorEnum } from "./enums";
-import { books, chapters, subjects } from "./taxonomy";
+import { books, chapters, subjects, textbooks } from "./taxonomy";
 
 export const questions = pgTable(
   "questions",
@@ -28,6 +28,11 @@ export const questions = pgTable(
     chapterId: integer("chapter_id")
       .notNull()
       .references(() => chapters.id),
+    // Optional: the student may be working from a book that isn't listed.
+    textbookId: varchar("textbook_id", { length: 48 }).references(
+      () => textbooks.id,
+      { onDelete: "set null" },
+    ),
     text: text("text").notNull(),
     photoUrl: text("photo_url"),
     // Reserved for a future OCR/LaTeX transcription + dedupe pipeline
@@ -178,6 +183,10 @@ export const questionsRelations = relations(questions, ({ one, many }) => ({
   chapter: one(chapters, {
     fields: [questions.chapterId],
     references: [chapters.id],
+  }),
+  textbook: one(textbooks, {
+    fields: [questions.textbookId],
+    references: [textbooks.id],
   }),
   solution: one(solutions, {
     fields: [questions.id],

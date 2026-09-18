@@ -20,6 +20,7 @@ import {
   lockEvents,
   notifications,
   questions,
+  textbooks,
   threadMessages,
 } from "../../db/schema";
 import { env } from "../../env";
@@ -140,6 +141,7 @@ export class QuestionsService {
         subject: true,
         book: true,
         chapter: true,
+        textbook: true,
         solution: true,
         thread: {
           where: isNull(threadMessages.deletedAt),
@@ -214,6 +216,23 @@ export class QuestionsService {
       .limit(1);
     if (!placement) return { ok: false, reason: "taxonomy" };
 
+    // A textbook must be one of this subject's — and, for subjects whose
+    // books are per paper (Biology), this paper's.
+    if (input.textbookId) {
+      const [textbook] = await this.db
+        .select({ id: textbooks.id })
+        .from(textbooks)
+        .where(
+          and(
+            eq(textbooks.id, input.textbookId),
+            eq(textbooks.subjectId, input.subjectId),
+            or(isNull(textbooks.bookId), eq(textbooks.bookId, input.bookId)),
+          ),
+        )
+        .limit(1);
+      if (!textbook) return { ok: false, reason: "taxonomy" };
+    }
+
     const policy = await this.db.query.askQuotaPolicies.findFirst({
       where: and(
         eq(askQuotaPolicies.scope, "global"),
@@ -247,6 +266,7 @@ export class QuestionsService {
         subjectId: input.subjectId,
         bookId: input.bookId,
         chapterId: input.chapterId,
+        textbookId: input.textbookId ?? null,
         text: input.text,
         photoUrl: input.photoUrl ?? null,
         status: "waiting",

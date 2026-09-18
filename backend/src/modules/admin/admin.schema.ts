@@ -10,8 +10,8 @@ export const studentSearchQuerySchema = z.object({
 
 export const createSolverSchema = z.object({
   name: z.string().min(1),
+  // Solvers sign in with this email and the password below.
   email: z.email(),
-  username: z.string().min(3).max(30),
   password: z.string().min(8),
   phone: z.string().min(6).optional(),
   institution: z.string().optional(),
