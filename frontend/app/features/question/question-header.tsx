@@ -88,6 +88,7 @@ export function QuestionHeader({ id }: { id: number }) {
           </span>
         )}
         <span>{ago(question.askedAt)}</span>
+        {question.textbook && <span>Book: {question.textbook.nameEn}</span>}
       </div>
     </article>
   );

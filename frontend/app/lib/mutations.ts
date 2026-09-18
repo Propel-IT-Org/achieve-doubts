@@ -32,6 +32,7 @@ export type CreateQuestionBody = {
   subjectId: string;
   bookId: string;
   chapterId: number;
+  textbookId?: string | null;
   text: string;
   photoUrl?: string | null;
 };

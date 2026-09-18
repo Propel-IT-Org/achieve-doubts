@@ -28,12 +28,34 @@ export type Book = {
   nameBn: string;
   chapters: Chapter[];
 };
+/**
+ * A published textbook. `bookId` names the one paper it covers (Biology's
+ * Botany/Zoology books) or is null when it covers every paper of its subject.
+ */
+export type Textbook = {
+  id: string;
+  bookId: string | null;
+  nameEn: string;
+  nameBn: string;
+};
+
+/**
+ * A subject's papers are called `books` by the API (they predate the
+ * textbook level — see the backend's db/schema/taxonomy.ts): a "book" here
+ * is a paper such as "Physics 1st paper". Textbooks are the authors' books.
+ */
 export type Subject = {
   id: string;
   nameEn: string;
   nameBn: string;
   books: Book[];
+  textbooks: Textbook[];
 };
+
+/** The textbooks a student could have used for this subject and paper. */
+export function textbooksFor(subject: Subject | undefined, paperId: string): Textbook[] {
+  return (subject?.textbooks ?? []).filter((t) => !t.bookId || t.bookId === paperId);
+}
 
 export const subjectsKey = () => ["subjects"] as const;
 export const fetchSubjects = () =>
@@ -111,6 +133,7 @@ export type QuestionDetail = QuestionRow & {
   subject: Subject | null;
   book: Book | null;
   chapter: Chapter | null;
+  textbook: Textbook | null;
   solution?: SolutionRow | null;
   thread?: ThreadRow[];
 };
