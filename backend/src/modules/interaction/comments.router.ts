@@ -19,9 +19,6 @@ export const commentsRouter = new Hono<AppEnv>()
   .post(
     "/:id/comments",
     requireAuth,
-    // Solvers deliberately lack comment:create — the public thread is for
-    // students; solvers reply in the private follow-up thread instead. That
-    // rule lives in permissions.ts, so this route needs no role check.
     requirePermission({ comment: ["create"] }),
     zValidator("json", createCommentSchema, zodErrorHook),
     async (c) => {

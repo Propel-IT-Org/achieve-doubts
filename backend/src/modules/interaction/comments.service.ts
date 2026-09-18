@@ -1,14 +1,29 @@
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, getTableColumns, isNull } from "drizzle-orm";
 import type { DB } from "../../db";
-import { comments, notifications, questions } from "../../db/schema";
+import { comments, notifications, questions, user } from "../../db/schema";
 import type { CreateCommentInput } from "./comments.schema";
 import { shapeSoftDeletable } from "./shared";
 
 const ANSWERED_STATUSES = ["answered", "satisfied", "unsatisfied"] as const;
 
+/**
+ * Who wrote a comment, for display. Comments are open to students and
+ * solvers alike, so the role decides which profile the name links to.
+ */
+const authorColumns = {
+  authorName: user.name,
+  authorRole: user.role,
+};
+
 export type CreateCommentResult =
   | { error: "not_found" }
-  | { comment: ReturnType<typeof shapeSoftDeletable> };
+  | {
+      comment: ReturnType<
+        typeof shapeSoftDeletable<
+          typeof comments.$inferSelect & { authorName: string | null; authorRole: string | null }
+        >
+      >;
+    };
 
 export class CommentsService {
   constructor(private db: DB) {}
@@ -22,8 +37,9 @@ export class CommentsService {
     if (!question) return null;
 
     const rows = await this.db
-      .select()
+      .select({ ...getTableColumns(comments), ...authorColumns })
       .from(comments)
+      .leftJoin(user, eq(user.id, comments.authorId))
       .where(eq(comments.questionId, questionId))
       .orderBy(asc(comments.createdAt));
 
@@ -31,9 +47,9 @@ export class CommentsService {
   }
 
   /**
-   * Notification rule: notify the asker unless the commenter IS the asker,
-   * and independently notify the assigned solver but only once the question
-   * has been answered. A comment therefore fires 0, 1 or 2 notifications.
+   * Notification rule: notify the asker and, once the question has been
+   * answered, its solver — never the commenter themselves. A comment
+   * therefore fires 0, 1 or 2 notifications.
    */
   async createComment(
     questionId: number,
@@ -72,6 +88,7 @@ export class CommentsService {
       }
       if (
         question.solverId &&
+        question.solverId !== authorId &&
         ANSWERED_STATUSES.includes(
           question.status as (typeof ANSWERED_STATUSES)[number],
         )
@@ -87,7 +104,18 @@ export class CommentsService {
         await tx.insert(notifications).values(notifRows);
       }
 
-      return { comment: shapeSoftDeletable(row) };
+      const [author] = await tx
+        .select(authorColumns)
+        .from(user)
+        .where(eq(user.id, authorId));
+
+      return {
+        comment: shapeSoftDeletable({
+          ...row,
+          authorName: author?.authorName ?? null,
+          authorRole: author?.authorRole ?? null,
+        }),
+      };
     });
   }
 

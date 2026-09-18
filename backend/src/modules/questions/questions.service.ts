@@ -24,7 +24,7 @@ import {
 } from "../../db/schema";
 import { env } from "../../env";
 import { containsPattern } from "../interaction/shared";
-import { pendingFollowupsWhere } from "../profiles/solver-stats.util";
+import { isLockBlocked, pendingFollowupsWhere } from "../profiles/solver-stats.util";
 import type {
   CreateQuestionInput,
   CursorPayload,
@@ -33,11 +33,6 @@ import type {
 import { cursorPayloadSchema } from "./questions.schema";
 
 export type Question = typeof questions.$inferSelect;
-
-// A solver holding this many still-open follow-ups (answered questions whose
-// asker replied last and that aren't marked satisfied) can't lock new work
-// until they clear the backlog.
-export const FOLLOWUP_BLOCK_THRESHOLD = 3;
 
 // Cursors are base64url, not base64: plain base64's `+` and `/` turn into a
 // space and a path separator in a hand-built query string, and a mangled
@@ -279,7 +274,7 @@ export class QuestionsService {
         .select({ n: count() })
         .from(questions)
         .where(pendingFollowupsWhere(solverId));
-      if ((blocking?.n ?? 0) >= FOLLOWUP_BLOCK_THRESHOLD) {
+      if (isLockBlocked(blocking?.n ?? 0)) {
         return { ok: false, reason: "followup_block" };
       }
 

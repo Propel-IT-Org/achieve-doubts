@@ -28,7 +28,7 @@ import {
 import type { Auth } from "../../lib/auth";
 import type { AppRole } from "../../lib/permissions";
 import { containsPattern } from "../interaction/shared";
-import { pendingFollowupCondition } from "../profiles/solver-stats.util";
+import { isLockBlocked, pendingFollowupCondition } from "../profiles/solver-stats.util";
 import type { CreateSolverInput, QuotaInput, RangeQuery } from "./admin.schema";
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
@@ -285,6 +285,7 @@ export class AdminService {
             ? satisfied / (satisfied + unsatisfied)
             : null,
         pendingFollowups: Number(agg?.pending ?? 0),
+        lockBlocked: isLockBlocked(Number(agg?.pending ?? 0)),
       };
     });
   }

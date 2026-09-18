@@ -105,9 +105,13 @@ export class SolutionsService {
   }
 
   /**
-   * Soft-deletes the solution, reverts the question to `assigned` with the
-   * same solver, clears the rating, and hard-deletes the follow-up thread so
-   * the solver can submit a fresh solution or unlock.
+   * Soft-deletes the solution, clears the rating and hard-deletes the
+   * follow-up thread. What happens to the question depends on who deleted:
+   *
+   *   - its own solver: back to `assigned` to them, with a fresh lock, so
+   *     they can submit a corrected solution (or unlock);
+   *   - a moderator removing someone else's: back to `waiting` with no
+   *     solver — reopened for every solver, and the asker is told.
    *
    * `canDeleteAny` comes from the caller's role; an ordinary solver may only
    * delete their own.
@@ -136,18 +140,32 @@ export class SolutionsService {
         .set({ deletedAt: new Date(), deletedBy: actorId })
         .where(eq(solutions.id, solution.id));
 
+      const reopen = solution.solverId !== actorId;
+
       const [question] = await tx
         .update(questions)
-        .set({
-          status: "assigned",
-          ratedAt: null,
-          answeredAt: null,
-          // Restart the lock clock. The old expiry is usually long past by
-          // now, and keeping it would let the sweeper reclaim the question
-          // within seconds — taking it from the solver meant to redo it.
-          lockedAt: sql`now()`,
-          lockExpiresAt: sql`now() + (${env.LOCK_TIMEOUT_MINUTES} * interval '1 minute')`,
-        })
+        .set(
+          reopen
+            ? {
+                status: "waiting",
+                solverId: null,
+                lockedAt: null,
+                lockExpiresAt: null,
+                matchedAfterSec: null,
+                ratedAt: null,
+                answeredAt: null,
+              }
+            : {
+                status: "assigned",
+                ratedAt: null,
+                answeredAt: null,
+                // Restart the lock clock. The old expiry is usually long past
+                // by now, and keeping it would let the sweeper reclaim the
+                // question within seconds — from the solver redoing it.
+                lockedAt: sql`now()`,
+                lockExpiresAt: sql`now() + (${env.LOCK_TIMEOUT_MINUTES} * interval '1 minute')`,
+              },
+        )
         .where(eq(questions.id, questionId))
         .returning();
 
@@ -159,6 +177,15 @@ export class SolutionsService {
         .delete(threadMessages)
         .where(eq(threadMessages.questionId, questionId));
 
+      if (reopen) {
+        await tx.insert(notifications).values({
+          type: "released",
+          userId: question.askerId,
+          questionId,
+          actorId,
+        });
+      }
+
       // A later resubmission hard-deletes this row, so the audit entry is the
       // lasting record of what was removed and by whom.
       await tx.insert(auditLog).values({
@@ -169,6 +196,7 @@ export class SolutionsService {
         meta: {
           questionId,
           solverId: solution.solverId,
+          reopened: reopen,
           text: solution.text?.slice(0, 500) ?? null,
           imageUrl: solution.imageUrl,
           audioUrl: solution.audioUrl,

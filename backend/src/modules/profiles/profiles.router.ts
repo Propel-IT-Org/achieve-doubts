@@ -15,6 +15,8 @@ import {
 import { requireAuth, requirePermission } from "../../middleware/auth";
 import {
   computeSolverStats,
+  FOLLOWUP_LIMIT,
+  isLockBlocked,
   listPendingFollowups,
 } from "./solver-stats.util";
 
@@ -182,6 +184,9 @@ export const profilesRouter = new Hono<AppEnv>()
         openQuestions: Number(openRow?.n ?? 0),
         lockedByMe: myLocked,
         pendingFollowups: pending,
+        // The rule lives here, so the dashboard never re-derives it.
+        followupLimit: FOLLOWUP_LIMIT,
+        lockBlocked: isLockBlocked(pending.length),
         recentlySolved: recent.map((r) => r.questions),
       });
     },

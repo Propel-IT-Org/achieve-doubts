@@ -61,13 +61,24 @@ export async function computeSolverStats(
 }
 
 /**
- * The follow-up-block predicate: an answered question, not yet satisfied,
- * whose latest non-deleted thread message came from the asker — i.e. the
- * ball is in the solver's court.
+ * How many unanswered follow-ups a solver may hold and still lock new
+ * questions: above this, locking pauses until they reply.
+ */
+export const FOLLOWUP_LIMIT = 3;
+
+/** Whether a solver holding `pending` unanswered follow-ups can't lock. */
+export const isLockBlocked = (pending: number) => pending > FOLLOWUP_LIMIT;
+
+/**
+ * An unanswered follow-up: a question with a solution (answered, whatever
+ * its rating) whose latest non-deleted thread message came from the asker.
+ * The student's follow-up puts it on the solver's count; the solver's reply
+ * takes it off again. A satisfied rating doesn't clear it — a follow-up
+ * posted after rating "satisfied" still needs an answer.
  */
 export function pendingFollowupCondition() {
   return and(
-    inArray(questions.status, ["answered", "unsatisfied"]),
+    inArray(questions.status, ["answered", "satisfied", "unsatisfied"]),
     isNull(questions.deletedAt),
     sql`(
       select ${threadMessages.authorSide} from ${threadMessages}

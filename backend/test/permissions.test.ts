@@ -75,6 +75,18 @@ describe("requirePermission", () => {
     }
   });
 
+  it("lets solvers comment, but not delete others' comments", async () => {
+    const app = makeApp({ auth: mockAuth({ id: "u1", role: "solver" }) });
+    app.get("/create", requireAuth, requirePermission({ comment: ["create"] }), (c) =>
+      c.json({ ok: true }),
+    );
+    app.get("/delete", requireAuth, requirePermission({ comment: ["delete"] }), (c) =>
+      c.json({ ok: true }),
+    );
+    expect((await app.request("/create")).status).toBe(200);
+    expect((await app.request("/delete")).status).toBe(403);
+  });
+
   it("requires every requested verb", async () => {
     const app = makeApp({ auth: mockAuth({ id: "u1", role: "student" }) });
     app.get(

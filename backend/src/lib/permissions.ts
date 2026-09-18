@@ -44,9 +44,7 @@ export const solver = ac.newRole({
 	// scope for the role; ownership is enforced in the service layer.
 	solution: ["create", "list", "delete"],
 	thread: ["create", "list"],
-	// Deliberately no comment:create — the public comment thread is for
-	// students; solvers reply in the private follow-up thread instead.
-	comment: ["list"],
+	comment: ["create", "list"],
 	notification: ["list", "update"],
 });
 
@@ -59,7 +57,7 @@ export const adminSolver = ac.newRole({
 	question: ["list", "claim", "release", "override", "delete"],
 	solution: ["create", "list", "delete"],
 	thread: ["create", "list", "delete"],
-	comment: ["list", "delete"],
+	comment: ["create", "list", "delete"],
 	notification: ["list", "update"],
 });
 
