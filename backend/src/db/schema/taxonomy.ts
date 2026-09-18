@@ -1,8 +1,9 @@
 import { relations } from "drizzle-orm";
 import { integer, pgTable, serial, text, unique, varchar } from "drizzle-orm/pg-core";
 
-// Subject -> book -> chapter taxonomy, seeded from the HSC syllabus in the
-// frontend prototype (docs/acs-doubts-prototype-v2.jsx SUBJECTS constant).
+// Subject -> book -> chapter, seeded from the HSC syllabus document
+// (db/seed/taxonomy.ts): a subject is a paper ("Physics 1st paper"), a book
+// an author's book for that paper, a chapter one of that book's chapters.
 
 export const subjects = pgTable("subjects", {
 	id: varchar("id", { length: 32 }).primaryKey(),
