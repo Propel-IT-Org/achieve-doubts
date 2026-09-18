@@ -3,9 +3,6 @@ import { AlertTriangle, Search } from "lucide-react";
 import { dur, fmt, pct } from "~/lib/format";
 import { useDashboard } from "~/lib/queries";
 
-/** A solver with this many open follow-ups can't lock new questions. */
-export const FOLLOWUP_BLOCK = 3;
-
 export function DashboardMetrics() {
   const data = useDashboard();
 
@@ -41,7 +38,7 @@ export function FindOrBlocked() {
   const data = useDashboard();
   const pending = data.pendingFollowups.length;
 
-  if (pending >= FOLLOWUP_BLOCK) {
+  if (data.lockBlocked) {
     return (
       <div className="callout warn" role="status" style={{ marginBottom: 28 }}>
         <AlertTriangle size={20} />
@@ -49,8 +46,8 @@ export function FindOrBlocked() {
           <h3>Answer your follow-ups first</h3>
           <p>
             You have {pending} unanswered follow-ups. You can't lock new
-            questions until fewer than {FOLLOWUP_BLOCK} are open. Reply in each
-            thread to clear them.
+            questions while more than {data.followupLimit} are open. Reply in
+            each thread to clear them.
           </p>
         </div>
       </div>

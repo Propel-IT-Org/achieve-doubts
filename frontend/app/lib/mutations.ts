@@ -189,6 +189,21 @@ export function usePostComment(questionId: number) {
   );
 }
 
+/** Admin solvers remove a comment; it stays in place as "Removed by an admin". */
+export function useDeleteComment(questionId: number) {
+  return useSWRMutation(
+    ["comments", questionId, "delete"],
+    async (_key, { arg }: { arg: { commentId: number } }) => {
+      const res = await api.api.questions[":id"].comments[":cid"].$delete({
+        param: { id: String(questionId), cid: String(arg.commentId) },
+      });
+      const out = await unwrap<{ comment: CommentRow }>(res);
+      await revalidate("comments");
+      return out;
+    },
+  );
+}
+
 // ---------- reports ----------
 
 export function useCreateReport(questionId: number) {

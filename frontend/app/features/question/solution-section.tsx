@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { AlertTriangle, ChevronRight, Clock, Lock, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { AsyncBoundary } from "~/components/async-boundary";
+import { AttachGrid, useMediaAttachments } from "~/components/media-attach";
 import { Attachments, Avatar } from "~/components/primitives";
 import { PanelSkeleton } from "~/components/skeleton";
 import { ago, shortName } from "~/lib/format";
@@ -68,6 +69,7 @@ function SolutionBody({ id }: { id: number }) {
         solution={question.solution}
         isAssignedSolver={isAssignedSolver}
         canDelete={isAssignedSolver || isAdminSolver(user?.role)}
+        reopensOnDelete={!isAssignedSolver}
       />
     );
   }
@@ -102,12 +104,15 @@ function SolutionCard({
   solution,
   isAssignedSolver,
   canDelete,
+  reopensOnDelete,
 }: {
   id: number;
   question: QuestionDetail;
   solution: SolutionRow;
   isAssignedSolver: boolean;
   canDelete: boolean;
+  /** A moderator removing someone else's solution reopens the question. */
+  reopensOnDelete: boolean;
 }) {
   const remove = useDeleteSolution(id);
   const [confirming, setConfirming] = useState(false);
@@ -141,7 +146,9 @@ function SolutionCard({
       {confirming && (
         <div className="confirm" role="alertdialog" aria-label="Delete this solution?">
           <span style={{ flex: 1, minWidth: 220 }}>
-            Delete this solution? The rating and follow-ups are cleared.
+            {reopensOnDelete
+              ? "Delete this solution? The question reopens for every solver, and its rating and follow-ups are cleared."
+              : "Delete this solution? The rating and follow-ups are cleared."}
           </span>
           <button
             type="button"
@@ -185,15 +192,17 @@ function SolutionComposer({ id }: { id: number }) {
   const submit = useSubmitSolution(id);
   const [text, setText] = useState("");
   const [err, setErr] = useState("");
+  const media = useMediaAttachments(setErr);
 
   const send = async () => {
-    if (!text.trim()) {
-      setErr("Add the solution text before submitting.");
+    if (!text.trim() && !media.hasMedia) {
+      setErr("Add text, an image or an audio note before submitting.");
       return;
     }
     try {
-      await submit.trigger({ text: text.trim() });
+      await submit.trigger({ text: text.trim() || undefined, ...media.payload() });
       setText("");
+      media.reset();
       toast("Solution submitted. The asker has been notified.");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Couldn't submit");
@@ -214,6 +223,7 @@ function SolutionComposer({ id }: { id: number }) {
           }}
         />
       </label>
+      <AttachGrid media={media} />
       {err && (
         <div className="err" role="alert">
           <AlertTriangle size={16} />
@@ -225,7 +235,7 @@ function SolutionComposer({ id }: { id: number }) {
           type="button"
           className="btn btn-primary"
           style={{ marginLeft: "auto" }}
-          disabled={submit.isMutating}
+          disabled={submit.isMutating || media.busy}
           onClick={send}
         >
           <Send size={15} />

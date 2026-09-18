@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Lock, Send } from "lucide-react";
+import { AlertTriangle, Lock, Send } from "lucide-react";
 import { toast } from "sonner";
 import { AsyncBoundary } from "~/components/async-boundary";
+import { AttachRow, useMediaAttachments } from "~/components/media-attach";
 import { Attachments } from "~/components/primitives";
 import { PanelSkeleton } from "~/components/skeleton";
 import { ago, shortName } from "~/lib/format";
@@ -90,7 +91,7 @@ function ThreadBody({ id, userId }: { id: number; userId: string }) {
       </div>
 
       {canPost ? (
-        <ThreadComposer id={id} />
+        <ThreadComposer id={id} asAsker={userId === question.askerId} />
       ) : (
         <p className="muted" style={{ margin: "16px 0 0", fontSize: 14 }}>
           You can read this thread. To join the discussion, use the comments below.
@@ -125,42 +126,59 @@ function ThreadMessage({ message: m, author }: { message: ThreadRow; author: str
   );
 }
 
-function ThreadComposer({ id }: { id: number }) {
+/** The asker asks follow-ups; the solver replies (prototype wording). */
+function ThreadComposer({ id, asAsker }: { id: number; asAsker: boolean }) {
   const post = usePostThreadMessage(id);
   const [text, setText] = useState("");
+  const [err, setErr] = useState("");
+  const media = useMediaAttachments(setErr);
 
   const send = async () => {
-    if (!text.trim()) return;
+    if (!text.trim() && !media.hasMedia) {
+      setErr("Add text, an image or an audio note before sending.");
+      return;
+    }
     try {
-      await post.trigger({ text: text.trim() });
+      await post.trigger({ text: text.trim() || undefined, ...media.payload() });
       setText("");
-      toast("Message sent");
+      media.reset();
+      toast(asAsker ? "Follow-up sent" : "Reply sent");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Couldn't send");
+      setErr(e instanceof Error ? e.message : "Couldn't send");
     }
   };
 
   return (
     <div className="composer">
       <label className="field">
-        <span>Write a message</span>
+        <span>{asAsker ? "Ask a follow-up question" : "Write a reply"}</span>
         <textarea
           className="textarea"
           style={{ minHeight: 90 }}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            setErr("");
+          }}
         />
       </label>
+      {err && (
+        <div className="err" role="alert">
+          <AlertTriangle size={16} />
+          {err}
+        </div>
+      )}
       <div className="composer-row">
+        <AttachRow media={media} />
         <button
           type="button"
           className="btn btn-primary btn-sm"
           style={{ marginLeft: "auto" }}
-          disabled={post.isMutating}
+          disabled={post.isMutating || media.busy}
           onClick={send}
         >
           <Send size={15} />
-          Send
+          {asAsker ? "Send follow-up" : "Send reply"}
         </button>
       </div>
     </div>

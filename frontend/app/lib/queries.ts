@@ -185,6 +185,9 @@ export function useQuestionsInfinite(
 export type CommentRow = {
   id: number;
   authorId: string;
+  /** Null only if the account no longer exists. */
+  authorName: string | null;
+  authorRole: string | null;
   text: string | null;
   imageUrl: string | null;
   audioUrl: string | null;
@@ -193,7 +196,9 @@ export type CommentRow = {
   deleted: boolean;
 };
 
-export type ThreadRow = CommentRow & { authorSide: "asker" | "solver" };
+export type ThreadRow = Omit<CommentRow, "authorName" | "authorRole"> & {
+  authorSide: "asker" | "solver";
+};
 
 export const commentsKey = (id: number) => ["comments", id] as const;
 export const fetchComments = (id: number) =>
@@ -294,15 +299,24 @@ export type SolverDashboard = {
   unlockRate: number | null;
   openQuestions: number;
   lockedByMe: QuestionRow[];
+  /** Questions whose latest follow-up is the student's, awaiting a reply. */
   pendingFollowups: QuestionRow[];
+  /** How many of those a solver may hold and still lock new questions. */
+  followupLimit: number;
+  /** Over the limit: locking new questions is paused. */
+  lockBlocked: boolean;
   recentlySolved: QuestionRow[];
 };
 
 export const dashboardKey = () => ["solver", "dashboard"] as const;
 export const fetchDashboard = () =>
   api.api.me.solver.dashboard.$get().then((r) => unwrap<SolverDashboard>(r));
+/**
+ * A student's follow-up arrives from another browser, so the count is
+ * re-read whenever the solver comes back to the tab.
+ */
 export const useDashboard = () =>
-  useSWR(dashboardKey(), fetchDashboard).data;
+  useSWR(dashboardKey(), fetchDashboard, { revalidateOnFocus: true }).data;
 
 export type StudentProfile = {
   id: string;

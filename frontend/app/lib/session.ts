@@ -25,8 +25,9 @@ export async function signOut() {
   await authClient.signOut();
 }
 
-export async function signInUsername(username: string, password: string) {
-  return authClient.signIn.username({ username, password });
+/** Solvers sign in with the email and password an admin set up. */
+export async function signInEmail(email: string, password: string) {
+  return authClient.signIn.email({ email, password });
 }
 
 /** Resolves the current session once, outside React (for clientLoader). */

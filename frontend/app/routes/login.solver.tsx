@@ -6,16 +6,18 @@ import { AlertTriangle, UserCheck } from "lucide-react";
 import { z } from "zod";
 
 import type { Route } from "./+types/login.solver";
-import { signInUsername } from "~/lib/session";
+import { signInEmail } from "~/lib/session";
 import { toast } from "sonner";
 
 export function meta(_: Route.MetaArgs) {
   return [{ title: "Solver login — Achieve Doubts" }];
 }
 
+const EMPTY = "Enter your email and password.";
+
 const loginSchema = z.object({
-  username: z.string().min(1, "Enter your username and password."),
-  password: z.string().min(1, "Enter your username and password."),
+  email: z.string().trim().min(1, EMPTY),
+  password: z.string().min(1, EMPTY),
 });
 
 type LoginForm = z.infer<typeof loginSchema>;
@@ -30,24 +32,21 @@ export default function SolverLogin() {
     formState: { errors, isSubmitting },
   } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { username: "", password: "" },
+    defaultValues: { email: "", password: "" },
   });
 
   const onSubmit = handleSubmit(async (values) => {
     setError("");
-    const { error: authError } = await signInUsername(
-      values.username,
-      values.password,
-    );
+    const { error: authError } = await signInEmail(values.email, values.password);
     if (authError) {
-      setError(authError.message ?? "That username and password don't match.");
+      setError(authError.message ?? "That email and password don't match.");
       return;
     }
     toast("Signed in");
     navigate("/solver");
   });
 
-  const message = errors.username?.message ?? errors.password?.message ?? error;
+  const message = errors.email?.message ?? errors.password?.message ?? error;
 
   return (
     <main id="main" className="page">
@@ -64,13 +63,13 @@ export default function SolverLogin() {
 
           <form className="panel" onSubmit={onSubmit}>
             <label className="field">
-              <span>Username</span>
+              <span>Email</span>
               <input
                 className="input"
-                type="text"
+                type="email"
                 autoComplete="username"
-                aria-invalid={errors.username ? "true" : undefined}
-                {...register("username")}
+                aria-invalid={errors.email ? "true" : undefined}
+                {...register("email")}
               />
             </label>
 

@@ -5,13 +5,14 @@ import { PanelSkeleton } from "~/components/skeleton";
 import { ago } from "~/lib/format";
 import { useDashboard } from "~/lib/queries";
 import { useTaxonomy } from "~/lib/taxonomy";
-import { FOLLOWUP_BLOCK } from "./dashboard-summary";
 
 /** A count tag that fills in once the dashboard loads. */
-function Count({ of, tone }: { of: "locked" | "pending"; tone: (n: number) => string }) {
+function Count({ of }: { of: "locked" | "pending" }) {
   const data = useDashboard();
-  const n = of === "locked" ? data.lockedByMe.length : data.pendingFollowups.length;
-  return <span className={`tag ${tone(n)}`}>{n}</span>;
+  if (of === "locked") return <span className="tag gold">{data.lockedByMe.length}</span>;
+  return (
+    <span className={`tag ${data.lockBlocked ? "off" : ""}`}>{data.pendingFollowups.length}</span>
+  );
 }
 
 export function LockedByMePanel() {
@@ -20,7 +21,7 @@ export function LockedByMePanel() {
       <h2 className="h3" id="mine-h" style={{ fontSize: 22 }}>
         Locked by you, waiting for your answer{" "}
         <AsyncBoundary fallback={null}>
-          <Count of="locked" tone={() => "gold"} />
+          <Count of="locked" />
         </AsyncBoundary>
       </h2>
       <AsyncBoundary fallback={<PanelSkeleton />} errorText="Couldn't load your locked questions.">
@@ -56,7 +57,7 @@ export function FollowupsPanel() {
       <h2 className="h3" id="pend-h" style={{ fontSize: 22 }}>
         Unanswered follow-ups{" "}
         <AsyncBoundary fallback={null}>
-          <Count of="pending" tone={(n) => (n >= FOLLOWUP_BLOCK ? "off" : "")} />
+          <Count of="pending" />
         </AsyncBoundary>
       </h2>
       <AsyncBoundary fallback={<PanelSkeleton />} errorText="Couldn't load your follow-ups.">
@@ -67,22 +68,21 @@ export function FollowupsPanel() {
 }
 
 function Followups() {
-  const { pendingFollowups: pending } = useDashboard();
+  const { pendingFollowups: pending, followupLimit: limit, lockBlocked } = useDashboard();
   const taxonomy = useTaxonomy();
-  const blocked = pending.length >= FOLLOWUP_BLOCK;
 
   return (
     <>
       <div className="rule-line">
-        <span className={`rule-dots${blocked ? " full" : ""}`} aria-hidden="true">
-          {Array.from({ length: FOLLOWUP_BLOCK }, (_, i) => (
+        <span className={`rule-dots${lockBlocked ? " full" : ""}`} aria-hidden="true">
+          {Array.from({ length: limit }, (_, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length indicator
             <i key={i} className={i < pending.length ? "on" : ""} />
           ))}
         </span>
         <span>
-          Open follow-ups: {Math.min(pending.length, FOLLOWUP_BLOCK)} of{" "}
-          {FOLLOWUP_BLOCK}. At {FOLLOWUP_BLOCK}, locking new questions pauses.
+          Open follow-ups: {pending.length}. With more than {limit}, locking
+          new questions pauses.
         </span>
       </div>
       {pending.length ? (
