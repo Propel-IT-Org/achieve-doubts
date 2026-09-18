@@ -78,7 +78,6 @@ export function useSetSolverAdmin() {
 export type CreateSolverBody = {
   name: string;
   email: string;
-  username: string;
   phone: string;
   institution: string;
   password: string;

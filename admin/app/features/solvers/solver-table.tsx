@@ -5,9 +5,6 @@ import { fmt, pct } from "~/lib/format";
 import { useSetSolverActive, useSetSolverAdmin } from "~/lib/mutations";
 import { type SolverRow, solverCredentials, useSolvers } from "~/lib/queries";
 
-/** A solver holding this many open follow-ups can't lock new questions. */
-const FOLLOWUP_BLOCK = 3;
-
 export function SolverCount() {
   const solvers = useSolvers();
   const active = solvers.filter((s) => !s.banned).length;
@@ -95,7 +92,7 @@ export function SolverTable() {
                   {pct(s.satisfactionRate)}
                 </td>
                 <td className="num" data-label="Open follow-ups">
-                  <span className={s.pendingFollowups >= FOLLOWUP_BLOCK ? "tag off" : ""}>
+                  <span className={s.lockBlocked ? "tag off" : ""}>
                     {s.pendingFollowups}
                   </span>
                 </td>

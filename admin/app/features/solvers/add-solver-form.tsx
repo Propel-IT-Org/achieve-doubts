@@ -14,10 +14,6 @@ const solverSchema = z
   .object({
     name: z.string().trim().min(1, "Enter the solver's name."),
     email: z.string().trim().pipe(z.email("Enter a valid email address.")),
-    username: z
-      .string()
-      .trim()
-      .regex(/^[a-zA-Z0-9_.]{3,30}$/, "Use 3 to 30 letters, numbers, dots or underscores."),
     phone: z
       .string()
       .transform(localDigits)
@@ -39,7 +35,6 @@ type Field = FieldPath<SolverForm>;
 function fieldForConflict(message: string): Field | null {
   if (/email/i.test(message)) return "email";
   if (/phone/i.test(message)) return "phone";
-  if (/username/i.test(message)) return "username";
   return null;
 }
 
@@ -62,7 +57,6 @@ export function AddSolverForm() {
     defaultValues: {
       name: "",
       email: "",
-      username: "",
       phone: "",
       institution: "",
       password: "",
@@ -76,7 +70,6 @@ export function AddSolverForm() {
       await create.trigger({
         name: values.name,
         email: values.email,
-        username: values.username,
         phone: `${values.phone.slice(0, 5)}-${values.phone.slice(5)}`,
         institution: values.institution,
         password: values.password,
@@ -133,7 +126,6 @@ export function AddSolverForm() {
         <div className="form-grid">
           {field("name", "Name", { full: true })}
           {field("email", "Email", { type: "email" })}
-          {field("username", "Username", { hint: "Used to log in on the main site." })}
           {field("phone", "Phone", {
             type: "tel",
             inputMode: "tel",

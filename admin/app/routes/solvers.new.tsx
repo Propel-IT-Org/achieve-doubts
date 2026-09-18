@@ -18,7 +18,7 @@ export default function AddSolverPage() {
       </Link>
       <PageHeader
         title="Add solver"
-        sub="Create a solver account. The solver logs in on the main site with this username and password."
+        sub="Create a solver account. The solver logs in on the main site with this email and password."
       />
       <AddSolverForm />
     </>

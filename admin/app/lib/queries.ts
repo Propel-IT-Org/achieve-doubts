@@ -128,6 +128,8 @@ export type SolverRow = {
   solved: number;
   satisfactionRate: number | null;
   pendingFollowups: number;
+  /** Too many unanswered follow-ups to lock new questions (API's rule). */
+  lockBlocked: boolean;
 };
 
 export const solversKey = () => ["solvers"] as const;
