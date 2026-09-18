@@ -117,7 +117,6 @@ export type SolverRow = {
   id: string;
   name: string;
   email: string;
-  username: string | null;
   role: string | null;
   banned: boolean | null;
   phone: string | null;

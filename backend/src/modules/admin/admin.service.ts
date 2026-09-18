@@ -240,7 +240,6 @@ export class AdminService {
         id: user.id,
         name: user.name,
         email: user.email,
-        username: user.username,
         role: user.role,
         banned: user.banned,
         phone: solverProfiles.phone,

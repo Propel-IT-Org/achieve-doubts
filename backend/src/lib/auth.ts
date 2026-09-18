@@ -1,7 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { admin } from "better-auth/plugins";
-import { username } from "better-auth/plugins/username";
 import type { DB } from "../db";
 import * as schema from "../db/schema";
 import { env } from "../env";
@@ -26,6 +25,8 @@ export function createAuth(database: DB) {
     }),
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,
+    // Solvers and staff sign in with email + password; students never do
+    // (they arrive through the Achieve SSO handshake).
     emailAndPassword: {
       enabled: true,
       // No self-registration for anyone. Solvers/staff are created only
@@ -62,12 +63,6 @@ export function createAuth(database: DB) {
     },
     trustedOrigins: [env.CORS_ORIGIN, env.ADMIN_ORIGIN],
     plugins: [
-      // Solver/staff sign-in. Students never use this — see
-      // achieve-sso-plugin.ts for the SSO-only student path.
-      username({
-        minUsernameLength: 3,
-        maxUsernameLength: 30,
-      }),
       admin({
         ac,
         roles,
