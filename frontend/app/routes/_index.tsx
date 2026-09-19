@@ -10,6 +10,7 @@ import { Skeleton } from "~/components/skeleton";
 import { DemoQuestionCard } from "~/features/home/demo-question-card";
 import { HowItWorks } from "~/features/home/how-it-works";
 import { OnlineCount, StatsFigures } from "~/features/home/site-stats";
+import { SsoErrorNotice } from "~/features/home/sso-error-notice";
 
 export function meta(_: Route.MetaArgs) {
   return [
@@ -34,6 +35,7 @@ export default function Home() {
 
   return (
     <main id="main">
+      <SsoErrorNotice />
       <section className="hero">
         <div className="wrap hero-in">
           <div>
