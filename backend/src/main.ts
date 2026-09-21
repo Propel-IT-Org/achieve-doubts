@@ -6,6 +6,9 @@
  *   bun dist/main.js seed       load the subject/book/chapter taxonomy
  *   STAFF_PASSWORD=… bun dist/main.js create-staff <email> <name>
  *                               create an admin-panel (staff) account
+ *   bun dist/main.js seed-solvers <accounts.json | ->
+ *                               create solver accounts from a JSON list
+ *                               ("-" reads it from stdin)
  *
  * Subcommands load their code with dynamic import(), so `migrate` never
  * builds the app or starts the lock sweeper against a schema that may not
@@ -47,9 +50,14 @@ switch (command) {
     process.exit(0);
   }
 
+  case "seed-solvers": {
+    await seedSolverAccounts(process.argv[3]);
+    process.exit(0);
+  }
+
   default:
     console.error(
-      `Unknown command "${command}". Expected one of: serve, migrate, seed, create-staff.`,
+      `Unknown command "${command}". Expected one of: serve, migrate, seed, create-staff, seed-solvers.`,
     );
     process.exit(1);
 }
@@ -120,4 +128,35 @@ async function createStaff(email: string | undefined, name: string | undefined) 
   });
   await db.$client.close();
   console.log(`[create-staff] created ${user.email} (${user.id})`);
+}
+
+/**
+ * The file holds passwords, so it's read from a path or stdin and never
+ * copied into the image. With Docker:
+ *   docker compose exec -T api bun dist/main.js seed-solvers - < accounts.json
+ */
+async function seedSolverAccounts(source: string | undefined) {
+  if (!source) {
+    console.error("Usage: main seed-solvers <accounts.json | ->");
+    process.exit(1);
+  }
+  const text = source === "-" ? await Bun.stdin.text() : await Bun.file(source).text();
+
+  const [{ createDatabase }, { createAuth }, { seedSolvers }] = await Promise.all([
+    import("./db"),
+    import("./lib/auth"),
+    import("./db/seed/solvers"),
+  ]);
+  const db = createDatabase();
+  const results = await seedSolvers(db, createAuth(db), JSON.parse(text));
+  await db.$client.close();
+
+  for (const r of results) {
+    console.log(`[seed-solvers] ${r.outcome.padEnd(7)} ${r.email}${r.detail ? ` — ${r.detail}` : ""}`);
+  }
+  const count = (o: string) => results.filter((r) => r.outcome === o).length;
+  console.log(
+    `[seed-solvers] ${count("created")} created, ${count("exists")} already existed, ${count("failed")} failed`,
+  );
+  if (count("failed")) process.exit(1);
 }
