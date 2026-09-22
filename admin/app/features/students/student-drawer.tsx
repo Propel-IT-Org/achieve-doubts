@@ -69,7 +69,7 @@ export function StudentDrawer({ id, onClose }: { id: string; onClose: () => void
 }
 
 function StudentRecord({ id, closeButton }: { id: string; closeButton: React.ReactNode }) {
-  const { user, student_profiles: profile, stats } = useStudent(id);
+  const { user, student_profiles: profile, batch, stats } = useStudent(id);
   const { run, busy } = useStudentActivation();
   const [confirming, setConfirming] = useState(false);
   const active = !user.banned;
@@ -137,6 +137,24 @@ function StudentRecord({ id, closeButton }: { id: string; closeButton: React.Rea
           <div>
             <dt>Phone</dt>
             <dd className="tnum">{profile?.phone ?? "–"}</dd>
+          </div>
+          <div>
+            <dt>Batch</dt>
+            <dd>
+              {batch ? (
+                <>
+                  {batch.label} <span className="muted">({batch.id})</span>
+                  {!batch.active && " — deactivated"}
+                </>
+              ) : (
+                "–"
+              )}
+            </dd>
+          </div>
+          <div>
+            <dt>Class</dt>
+            {/* What their batch is on: the only syllabus they can ask from. */}
+            <dd>{batch?.levelName ?? "–"}</dd>
           </div>
           <div>
             <dt>Questions asked</dt>

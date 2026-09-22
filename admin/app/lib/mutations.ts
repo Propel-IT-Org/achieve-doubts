@@ -78,8 +78,35 @@ export function useSetSolverAdmin() {
 export function useCreateBatch() {
   return useSWRMutation(
     ["batches", "create"],
-    async (_key, { arg }: { arg: { id: string; label: string } }) => {
+    async (
+      _key,
+      { arg }: { arg: { id: string; label: string; levelId: string | null } },
+    ) => {
       const res = await api.api.admin.batches.$post({ json: arg });
+      const out = await unwrap<{ id: string }>(res);
+      await revalidate("batches");
+      return out;
+    },
+  );
+}
+
+/**
+ * The name and the class. Moving a batch to another class changes which
+ * syllabus its students can ask against, so their taxonomy is revalidated
+ * too — theirs, not ours, but the next page load is what matters.
+ */
+export function useUpdateBatch() {
+  return useSWRMutation(
+    ["batches", "update"],
+    async (
+      _key,
+      { arg }: { arg: { id: string; label?: string; levelId?: string | null } },
+    ) => {
+      const { id, ...body } = arg;
+      const res = await api.api.admin.batches[":id"].$patch({
+        param: { id },
+        json: body,
+      });
       const out = await unwrap<{ id: string }>(res);
       await revalidate("batches");
       return out;

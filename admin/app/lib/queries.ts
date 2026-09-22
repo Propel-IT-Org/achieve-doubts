@@ -122,6 +122,13 @@ export type StudentRecord = {
     hscYear: number | null;
     phone: string | null;
   } | null;
+  batch: {
+    id: string;
+    label: string;
+    active: boolean;
+    levelId: string | null;
+    levelName: string | null;
+  } | null;
   stats: { asked: number; satisfied: number; unsatisfied: number };
 };
 
@@ -175,6 +182,9 @@ export type BatchRow = {
   id: string;
   label: string;
   active: boolean;
+  /** The class its students study. Null means every level's taxonomy. */
+  levelId: string | null;
+  levelName: string | null;
   createdAt: string;
   students: number;
   /** Of those students, how many aren't deactivated. */
@@ -185,6 +195,21 @@ export const batchesKey = () => ["batches"] as const;
 export const fetchBatches = () =>
   api.api.admin.batches.$get().then((r) => unwrap<BatchRow[]>(r));
 export const useBatches = () => useSWR(batchesKey(), fetchBatches).data;
+
+// ---------- levels ----------
+
+/** A class: the top of the taxonomy, and what a batch is put on. */
+export type LevelRow = {
+  id: string;
+  nameEn: string;
+  nameBn: string;
+  sort: number;
+};
+
+export const levelsKey = () => ["levels"] as const;
+export const fetchLevels = () =>
+  api.api.admin.levels.$get().then((r) => unwrap<LevelRow[]>(r));
+export const useLevels = () => useSWR(levelsKey(), fetchLevels).data;
 
 // ---------- analytics ----------
 

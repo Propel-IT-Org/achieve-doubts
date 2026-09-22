@@ -4,6 +4,7 @@ import { AlertTriangle, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { useCreateBatch } from "~/lib/mutations";
+import { LevelOptions } from "./level-options";
 
 /**
  * The id is compared with the `Batch` value Achieve sends, character for
@@ -18,6 +19,8 @@ const batchSchema = z.object({
     .max(64, "Use 64 characters or fewer.")
     .regex(/^\S+$/, "The id can't contain spaces."),
   label: z.string().trim().min(1, "Give the batch a name admins will recognise."),
+  // Empty means no class: those students see every level's taxonomy.
+  levelId: z.string().trim(),
 });
 
 type BatchForm = z.input<typeof batchSchema>;
@@ -33,12 +36,12 @@ export function AddBatchForm({ onDone }: { onDone: () => void }) {
   } = useForm<BatchForm, unknown, BatchValues>({
     resolver: zodResolver(batchSchema),
     reValidateMode: "onChange",
-    defaultValues: { id: "", label: "" },
+    defaultValues: { id: "", label: "", levelId: "" },
   });
 
   const onSubmit = handleSubmit(async (values) => {
     try {
-      await create.trigger(values);
+      await create.trigger({ ...values, levelId: values.levelId || null });
       toast(`Batch ${values.id} added. Its students can sign in now.`);
       onDone();
     } catch (e) {
@@ -69,6 +72,17 @@ export function AddBatchForm({ onDone }: { onDone: () => void }) {
             ) : (
               <small>Exactly as Achieve sends it, for example hscfrb26.</small>
             )}
+          </span>
+        </label>
+
+        <label className="field">
+          <span>Class</span>
+          <select className="select" {...register("levelId")}>
+            <option value="">No class yet</option>
+            <LevelOptions />
+          </select>
+          <span>
+            <small>Its students can only ask about this class's syllabus.</small>
           </span>
         </label>
 

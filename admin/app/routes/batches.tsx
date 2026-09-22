@@ -8,7 +8,7 @@ import { AsyncBoundary } from "~/components/async-boundary";
 import { PanelSkeleton } from "~/components/skeleton";
 import { AddBatchForm } from "~/features/batches/add-batch-form";
 import { BatchCount, BatchTable } from "~/features/batches/batch-table";
-import { batchesKey, fetchBatches } from "~/lib/queries";
+import { batchesKey, fetchBatches, fetchLevels, levelsKey } from "~/lib/queries";
 
 export function meta(_: Route.MetaArgs) {
   return [{ title: "Batches — Achieve Doubts admin" }];
@@ -16,6 +16,8 @@ export function meta(_: Route.MetaArgs) {
 
 export async function clientLoader(_: Route.ClientLoaderArgs) {
   preload(batchesKey(), fetchBatches);
+  // The add and edit forms both offer the class list.
+  preload(levelsKey(), fetchLevels);
   return null;
 }
 
@@ -45,7 +47,12 @@ export default function BatchesPage() {
 
       {adding && (
         <div style={{ maxWidth: 780, marginBottom: 24 }}>
-          <AddBatchForm onDone={() => setAdding(false)} />
+          <AsyncBoundary
+            fallback={<PanelSkeleton lines={4} />}
+            errorText="Couldn't load the class list."
+          >
+            <AddBatchForm onDone={() => setAdding(false)} />
+          </AsyncBoundary>
         </div>
       )}
 
