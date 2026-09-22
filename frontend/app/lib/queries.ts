@@ -35,10 +35,7 @@ export type Subject = {
   nameBn: string;
   books: Book[];
 };
-/**
- * A class, with its subjects nested. The API groups and filters: a student
- * gets their own class and nothing else, everyone else gets them all.
- */
+/** A class, with its subjects nested. The API groups and orders them. */
 export type Level = {
   id: string;
   nameEn: string;
@@ -51,8 +48,20 @@ export const taxonomyKey = () => ["taxonomy"] as const;
 export const fetchTaxonomy = () =>
   api.api.taxonomy.$get().then((r) => unwrap<Level[]>(r));
 
+/** Every class: what names a question card, whichever class it is from. */
 export const useTaxonomyTree = () =>
   useSWR(taxonomyKey(), fetchTaxonomy).data;
+
+export const askableTaxonomyKey = () => ["taxonomy", "mine"] as const;
+export const fetchAskableTaxonomy = () =>
+  api.api.taxonomy.mine.$get().then((r) => unwrap<Level[]>(r));
+
+/**
+ * What the viewer may ask under and filter by: a student gets their batch's
+ * class and nothing else, anyone else every class. The API decides.
+ */
+export const useAskableTaxonomy = () =>
+  useSWR(askableTaxonomyKey(), fetchAskableTaxonomy).data;
 
 // ---------- questions ----------
 

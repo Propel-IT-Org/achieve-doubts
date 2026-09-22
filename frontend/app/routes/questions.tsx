@@ -3,7 +3,13 @@ import { AlertTriangle, Lock } from "lucide-react";
 import { preload } from "swr";
 
 import type { Route } from "./+types/questions";
-import { fetchQuestions, fetchTaxonomy, taxonomyKey } from "~/lib/queries";
+import {
+  askableTaxonomyKey,
+  fetchAskableTaxonomy,
+  fetchQuestions,
+  fetchTaxonomy,
+  taxonomyKey,
+} from "~/lib/queries";
 import { useLiveFeed } from "~/lib/realtime";
 import { isSolver, useSession } from "~/lib/session";
 import { AsyncBoundary } from "~/components/async-boundary";
@@ -24,6 +30,7 @@ export function meta(_: Route.MetaArgs) {
 export async function clientLoader({ request }: Route.ClientLoaderArgs) {
   const filters = filtersFromParams(new URL(request.url).searchParams);
   preload(taxonomyKey(), fetchTaxonomy);
+  preload(askableTaxonomyKey(), fetchAskableTaxonomy);
   // useSWRInfinite stores each page under its own key; `null` is page 0's
   // cursor, so this is the exact key the list reads first.
   preload(["questions-infinite", filters, null], () => fetchQuestions(filters));

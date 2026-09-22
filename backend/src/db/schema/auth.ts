@@ -7,6 +7,7 @@ import {
 	text,
 	timestamp,
 } from "drizzle-orm/pg-core";
+import { levels } from "./taxonomy";
 
 export const user = pgTable("user", {
 	id: text("id").primaryKey(),
@@ -89,7 +90,10 @@ export const batches = pgTable("batches", {
 	id: text("id").primaryKey(),
 	label: text("label").notNull(),
 	active: boolean("active").notNull(),
-	levelId: text("level_id"),
+	levelId: text("level_id").references(() => levels.id, {
+		onDelete: "cascade",
+		onUpdate: "cascade",
+	}),
 	createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

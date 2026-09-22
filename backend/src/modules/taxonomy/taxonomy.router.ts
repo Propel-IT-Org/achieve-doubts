@@ -2,21 +2,24 @@ import { Hono } from "hono";
 import type { AppEnv } from "../../lib/di";
 import { optionalAuth } from "../../middleware/auth";
 
-/** The tree only changes when the seed runs, so a few minutes' staleness is harmless. */
+/** Staff edits drop the server cache; this only bounds the browser's copy. */
 const TTL_SECONDS = 300;
 
-// Public: the whole level -> subject -> book -> chapter tree the ask and
-// filter UIs need, in one request. Every page that shows a question card
-// loads it.
+// Two reads of the one level -> subject -> book -> chapter tree:
 //
-// A signed-in student gets their batch's level only, so they can neither ask
-// outside their syllabus nor be offered another class's chapters. Guests,
-// solvers and staff get every level, grouped, because they read across all
-// of them.
-export const taxonomyRouter = new Hono<AppEnv>().get(
-	"/",
-	optionalAuth,
-	async (c) => {
+//   GET /          every class. What any page uses to name a question — the
+//                  question list is public across classes, so a student's
+//                  own class alone can't label every card they see.
+//   GET /mine      what the caller may ask under and filter by: a student
+//                  gets their batch's class only, everyone else every class.
+//
+// Both come grouped and ordered from the query; no client filters them.
+export const taxonomyRouter = new Hono<AppEnv>()
+	.get("/", async (c) => {
+		c.header("Cache-Control", `public, max-age=${TTL_SECONDS}`);
+		return c.json(await c.var.di.get("taxonomy").tree(null));
+	})
+	.get("/mine", optionalAuth, async (c) => {
 		const taxonomy = c.var.di.get("taxonomy");
 		const user = c.var.user;
 		const levelId = user ? await taxonomy.levelForUser(user.id) : null;
@@ -26,5 +29,4 @@ export const taxonomyRouter = new Hono<AppEnv>().get(
 		c.header("Cache-Control", `private, max-age=${TTL_SECONDS}`);
 		c.header("Vary", "Cookie");
 		return c.json(await taxonomy.tree(levelId));
-	},
-);
+	});

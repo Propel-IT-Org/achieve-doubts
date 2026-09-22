@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { RotateCcw, Search, SlidersHorizontal } from "lucide-react";
 import type { Level, QuestionListFilters } from "~/lib/queries";
-import { useTaxonomyTree } from "~/lib/queries";
+import { useAskableTaxonomy } from "~/lib/queries";
 import { STATUS_LABEL } from "~/lib/format";
 import { FeedIndicator } from "./feed-indicator";
 
@@ -130,7 +130,7 @@ export function TaxonomySelectsPlaceholder() {
 
 /** Cascading subject → book → chapter selects. Suspends on the taxonomy. */
 export function TaxonomySelects() {
-  const levels: Level[] = useTaxonomyTree();
+  const levels: Level[] = useAskableTaxonomy();
   const [params, setParam] = useParamSetter();
 
   const subject = params.get("subject") ?? "";
@@ -151,8 +151,8 @@ export function TaxonomySelects() {
           onChange={(e) => setParam("subject", e.target.value, ["book", "chapter"])}
         >
           <option value="">All subjects</option>
-          {/* The API groups by class: a solver sees every class, and the
-              same subject name appears under more than one. */}
+          {/* The API groups by class and decides which: a student gets
+              their own, a solver every class, where names repeat. */}
           {levels.map((level) => (
             <optgroup key={level.id} label={level.nameEn}>
               {level.subjects.map((s) => (

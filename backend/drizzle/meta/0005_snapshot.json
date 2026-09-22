@@ -1,5 +1,5 @@
 {
-  "id": "2174b572-fb8a-410a-bef6-42f48f0b2cc5",
+  "id": "25ea00c2-fd33-4286-8e66-012c82fd4534",
   "prevId": "455a5ad8-2dfd-490b-b829-a0a9521ab688",
   "version": "7",
   "dialect": "postgresql",
@@ -285,7 +285,21 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "batches_level_id_levels_id_fk": {
+          "name": "batches_level_id_levels_id_fk",
+          "tableFrom": "batches",
+          "tableTo": "levels",
+          "columnsFrom": [
+            "level_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},

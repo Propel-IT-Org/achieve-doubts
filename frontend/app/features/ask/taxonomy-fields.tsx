@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { AlertTriangle } from "lucide-react";
 import { useFormContext } from "react-hook-form";
-import { useTaxonomyTree } from "~/lib/queries";
+import { useAskableTaxonomy } from "~/lib/queries";
 import type { AskForm } from "./ask-schema";
 
 /** Disabled stand-ins with the same layout, while the tree loads. */
@@ -25,7 +25,7 @@ export function TaxonomyFields() {
   // A student's tree holds exactly their class. It can hold more than one
   // when their batch has no class set, hence the group labels — the API
   // decides which subjects they may ask under, never this.
-  const levels = useTaxonomyTree();
+  const levels = useAskableTaxonomy();
   const subjects = levels.flatMap((level) => level.subjects);
   const { register, watch, setValue } = useFormContext<AskForm>();
 
