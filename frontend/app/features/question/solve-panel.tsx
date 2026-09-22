@@ -6,6 +6,7 @@ import { shortName } from "~/lib/format";
 import { useLockQuestion, useOverrideLock, useUnlockQuestion } from "~/lib/mutations";
 import { useQuestion } from "~/lib/queries";
 import { isAdminSolver, useSession } from "~/lib/session";
+import { LockCountdown } from "./lock-countdown";
 import { useAction } from "./use-action";
 
 /**
@@ -102,7 +103,11 @@ function LockBar({ id }: { id: number }) {
             <Lock size={12} />
             Locked by you
           </span>
-          <span>You can unlock until you submit the solution.</span>
+          <LockCountdown questionId={id} expiresAt={question.lockExpiresAt} />
+          <span>
+            Answer before the time runs out, or the question goes back to
+            every solver. You can unlock it until you submit.
+          </span>
         </span>
         <span className="lb-actions">
           <button
