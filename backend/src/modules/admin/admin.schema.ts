@@ -2,11 +2,23 @@ import { z } from "zod";
 
 export const activeBodySchema = z.object({ active: z.boolean() });
 
+/**
+ * Sorting a paged list has to happen in SQL — sorting one page would order
+ * the wrong rows. "recent" is newest first; the rest read naturally
+ * (A→Z, most questions first), so each has its own default direction.
+ */
+export const studentSortValues = ["recent", "name", "asked", "satisfaction"] as const;
+
 export const studentSearchQuerySchema = z.object({
   q: z.string().max(100).optional(),
+  sort: z.enum(studentSortValues).default("recent"),
+  dir: z.enum(["asc", "desc"]).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   offset: z.coerce.number().int().min(0).default(0),
 });
+
+export type StudentSort = (typeof studentSortValues)[number];
+export type StudentSearchQuery = z.infer<typeof studentSearchQuerySchema>;
 
 export const createSolverSchema = z.object({
   name: z.string().min(1),

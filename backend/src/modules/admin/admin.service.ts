@@ -1,5 +1,6 @@
 import {
   type AnyColumn,
+  type SQL,
   and,
   desc,
   eq,
@@ -30,7 +31,12 @@ import type { Auth } from "../../lib/auth";
 import type { AppRole } from "../../lib/permissions";
 import { containsPattern } from "../interaction/shared";
 import { isLockBlocked, pendingFollowupCondition } from "../profiles/solver-stats.util";
-import type { CreateSolverInput, QuotaInput, RangeQuery } from "./admin.schema";
+import type {
+  CreateSolverInput,
+  QuotaInput,
+  RangeQuery,
+  StudentSearchQuery,
+} from "./admin.schema";
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -80,7 +86,7 @@ export class AdminService {
    * One page of students matching `q`, each with their question and rating
    * counts, plus how many match in total and how many of those are active.
    */
-  async listStudents(q: string | undefined, limit: number, offset: number) {
+  async listStudents({ q, sort, dir, limit, offset }: StudentSearchQuery) {
     const search = q?.trim();
     const filters = [eq(user.role, "student")];
     if (search) {
@@ -114,6 +120,27 @@ export class AdminService {
       .groupBy(questions.askerId)
       .as("asked");
 
+    // Sorting must happen in SQL: ordering one page would order the wrong
+    // rows. Each column starts in the direction an admin expects (newest,
+    // A→Z, most questions), which `dir` flips. Every ordering ends on the
+    // id, so paging can't repeat or skip a row when two students tie.
+    const satisfaction = sql`(${asked.satisfied}::numeric / nullif(${asked.satisfied} + ${asked.unsatisfied}, 0))`;
+    const descending = (dir ?? (sort === "name" ? "asc" : "desc")) === "desc";
+    const direction = (column: SQL) =>
+      descending ? sql`${column} desc` : sql`${column} asc`;
+    const order: SQL[] = [
+      sort === "name"
+        ? direction(sql`${user.name}`)
+        : sort === "asked"
+          ? direction(sql`coalesce(${asked.asked}, 0)`)
+          : sort === "satisfaction"
+            // A student with no rating has no rate; that is not a low one,
+            // so they sort last whichever way the column is pointed.
+            ? sql`${direction(satisfaction)} nulls last`
+            : direction(sql`${user.createdAt}`),
+      sql`${user.id} asc`,
+    ];
+
     const [rows, [totals]] = await Promise.all([
       this.db
         .select({
@@ -135,7 +162,7 @@ export class AdminService {
         .leftJoin(studentProfiles, eq(studentProfiles.userId, user.id))
         .leftJoin(asked, eq(asked.askerId, user.id))
         .where(where)
-        .orderBy(desc(user.createdAt))
+        .orderBy(...order)
         .limit(limit)
         .offset(offset),
       this.db

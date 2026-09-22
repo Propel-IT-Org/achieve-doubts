@@ -57,8 +57,7 @@ export const adminRouter = new Hono<AppEnv>()
     requirePermission({ studentProfile: ["list"] }),
     zValidator("query", studentSearchQuerySchema, zodErrorHook),
     async (c) => {
-      const { q, limit, offset } = c.req.valid("query");
-      const rows = await c.var.di.get("admin").listStudents(q, limit, offset);
+      const rows = await c.var.di.get("admin").listStudents(c.req.valid("query"));
       return c.json(rows);
     },
   )
