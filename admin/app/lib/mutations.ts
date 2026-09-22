@@ -149,3 +149,100 @@ export function useCreateSolver() {
     },
   );
 }
+
+// ---------- taxonomy ----------
+
+type Names = { nameEn: string; nameBn: string };
+
+/**
+ * One edit to the syllabus tree. Kind and action are separate fields so the
+ * switch below narrows to a single endpoint and the RPC client still checks
+ * each body — one dynamic path would have thrown that away.
+ */
+export type TaxonomyWrite =
+  | { kind: "level"; action: "create"; body: Names & { sort?: number } }
+  | { kind: "level"; action: "update"; id: string; body: Partial<Names> & { sort?: number } }
+  | { kind: "level"; action: "delete"; id: string }
+  | { kind: "subject"; action: "create"; body: Names & { levelId: string; sort?: number } }
+  | {
+      kind: "subject";
+      action: "update";
+      id: string;
+      body: Partial<Names> & { levelId?: string; sort?: number };
+    }
+  | { kind: "subject"; action: "delete"; id: string }
+  | { kind: "book"; action: "create"; body: Names & { subjectId: string; sort?: number } }
+  | { kind: "book"; action: "update"; id: string; body: Partial<Names> & { sort?: number } }
+  | { kind: "book"; action: "delete"; id: string }
+  | { kind: "chapter"; action: "create"; body: Names & { bookId: string; number?: number } }
+  | {
+      kind: "chapter";
+      action: "update";
+      id: string;
+      body: Partial<Names> & { number?: number };
+    }
+  | { kind: "chapter"; action: "delete"; id: string };
+
+export type TaxonomyKind = TaxonomyWrite["kind"];
+
+function sendTaxonomyWrite(arg: TaxonomyWrite) {
+  const t = api.api.admin.taxonomy;
+
+  switch (arg.kind) {
+    case "level":
+      switch (arg.action) {
+        case "create":
+          return t.levels.$post({ json: arg.body });
+        case "update":
+          return t.levels[":id"].$patch({ param: { id: arg.id }, json: arg.body });
+        case "delete":
+          return t.levels[":id"].$delete({ param: { id: arg.id } });
+      }
+    // biome-ignore lint/correctness/noFallthroughSwitchClause: every inner switch returns
+    case "subject":
+      switch (arg.action) {
+        case "create":
+          return t.subjects.$post({ json: arg.body });
+        case "update":
+          return t.subjects[":id"].$patch({ param: { id: arg.id }, json: arg.body });
+        case "delete":
+          return t.subjects[":id"].$delete({ param: { id: arg.id } });
+      }
+    // biome-ignore lint/correctness/noFallthroughSwitchClause: every inner switch returns
+    case "book":
+      switch (arg.action) {
+        case "create":
+          return t.books.$post({ json: arg.body });
+        case "update":
+          return t.books[":id"].$patch({ param: { id: arg.id }, json: arg.body });
+        case "delete":
+          return t.books[":id"].$delete({ param: { id: arg.id } });
+      }
+    // biome-ignore lint/correctness/noFallthroughSwitchClause: every inner switch returns
+    case "chapter":
+      switch (arg.action) {
+        case "create":
+          return t.chapters.$post({ json: arg.body });
+        case "update":
+          return t.chapters[":id"].$patch({ param: { id: arg.id }, json: arg.body });
+        case "delete":
+          return t.chapters[":id"].$delete({ param: { id: arg.id } });
+      }
+  }
+}
+
+/**
+ * Every taxonomy edit through one hook: the page has a dozen such buttons
+ * and they all revalidate the same keys. The batch list shows a class name,
+ * so it is refetched too.
+ */
+export function useTaxonomyWrite() {
+  return useSWRMutation(
+    ["taxonomy", "write"],
+    async (_key, { arg }: { arg: TaxonomyWrite }) => {
+      const out = await unwrap<unknown>(await sendTaxonomyWrite(arg));
+      await revalidate("taxonomy", "levels", "batches");
+      return out;
+    },
+  );
+}
