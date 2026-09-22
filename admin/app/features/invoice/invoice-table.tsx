@@ -1,6 +1,7 @@
 import { Download } from "lucide-react";
 import { toast } from "sonner";
 import { ActiveTag } from "~/components/primitives";
+import { type SortAccessors, SortHeader, useSortedRows } from "~/components/table-sort";
 import { dur, fmt, formatDate, share } from "~/lib/format";
 import { type SolverRow, solverCredentials, usePayouts, useSolvers } from "~/lib/queries";
 
@@ -44,8 +45,22 @@ function useInvoice(from: string, to: string) {
   return { lines, total };
 }
 
+const INVOICE_SORTS: SortAccessors<InvoiceLine> = {
+  name: (l) => l.solver.name,
+  email: (l) => l.solver.email,
+  answered: (l) => l.answered,
+  satisfied: (l) => l.satisfied,
+  unsatisfied: (l) => l.unsatisfied,
+  unrated: (l) => l.unrated,
+  // No rating is not a zero rate, so those rows sort last either way.
+  satisfaction: (l) =>
+    l.satisfied + l.unsatisfied ? l.satisfied / (l.satisfied + l.unsatisfied) : null,
+  response: (l) => (l.answered ? l.avgRespMin : null),
+};
+
 export function InvoiceTable({ from, to }: { from: string; to: string }) {
-  const { lines, total } = useInvoice(from, to);
+  const { lines: unsorted, total } = useInvoice(from, to);
+  const { rows: lines, headerProps } = useSortedRows(unsorted, INVOICE_SORTS);
 
   if (total.answered === 0) {
     return (
@@ -63,15 +78,16 @@ export function InvoiceTable({ from, to }: { from: string; to: string }) {
         </caption>
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Email</th>
+            <SortHeader label="Name" {...headerProps("name")} />
+            <SortHeader label="Email" {...headerProps("email")} />
             <th>Phone</th>
-            <th className="num">Answered</th>
-            <th className="num">Satisfied</th>
-            <th className="num">Not satisfied</th>
-            <th className="num">Unrated</th>
-            <th className="num">Satisfaction</th>
-            <th className="num">Avg response</th>
+            <SortHeader label="Answered" numeric {...headerProps("answered", "desc")} />
+            <SortHeader label="Satisfied" numeric {...headerProps("satisfied", "desc")} />
+            <SortHeader label="Not satisfied" numeric {...headerProps("unsatisfied", "desc")} />
+            <SortHeader label="Unrated" numeric {...headerProps("unrated", "desc")} />
+            <SortHeader label="Satisfaction" numeric {...headerProps("satisfaction", "desc")} />
+            {/* Fastest first reads better than slowest. */}
+            <SortHeader label="Avg response" numeric {...headerProps("response", "asc")} />
           </tr>
         </thead>
         <tbody>

@@ -78,13 +78,35 @@ export type StudentRow = {
 
 export type StudentPage = { students: StudentRow[]; total: number; active: number };
 
-export const studentsKey = (q: string) => ["students", q] as const;
-export const fetchStudents = (q: string) =>
+/** Sorting happens in the API: one page can't be sorted client-side. */
+export type StudentSort = "recent" | "name" | "asked" | "satisfaction";
+
+export type StudentQuery = {
+  q: string;
+  sort: StudentSort;
+  dir?: "asc" | "desc";
+  page: number;
+};
+
+export const STUDENTS_PAGE_SIZE = 50;
+
+export const studentsKey = (query: StudentQuery) => ["students", query] as const;
+
+export const fetchStudents = ({ q, sort, dir, page }: StudentQuery) =>
   api.api.admin.students
-    .$get({ query: { q: q || undefined, limit: "100" } })
+    .$get({
+      query: {
+        q: q || undefined,
+        sort,
+        dir,
+        limit: String(STUDENTS_PAGE_SIZE),
+        offset: String((page - 1) * STUDENTS_PAGE_SIZE),
+      },
+    })
     .then((r) => unwrap<StudentPage>(r));
-export const useStudents = (q: string) =>
-  useSWR(studentsKey(q), () => fetchStudents(q)).data;
+
+export const useStudents = (query: StudentQuery) =>
+  useSWR(studentsKey(query), () => fetchStudents(query)).data;
 
 export type StudentRecord = {
   user: {

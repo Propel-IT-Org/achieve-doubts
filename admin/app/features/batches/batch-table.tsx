@@ -1,9 +1,18 @@
 import { Fragment, useState } from "react";
 import { toast } from "sonner";
 import { ActiveTag } from "~/components/primitives";
+import { type SortAccessors, SortHeader, useSortedRows } from "~/components/table-sort";
 import { formatDate } from "~/lib/format";
 import { useSetBatchActive } from "~/lib/mutations";
 import { type BatchRow, useBatches } from "~/lib/queries";
+
+const BATCH_SORTS: SortAccessors<BatchRow> = {
+  id: (b) => b.id,
+  label: (b) => b.label,
+  students: (b) => b.students,
+  active: (b) => b.activeStudents,
+  added: (b) => Date.parse(b.createdAt),
+};
 
 export function BatchCount() {
   const batches = useBatches();
@@ -16,7 +25,7 @@ export function BatchCount() {
 }
 
 export function BatchTable() {
-  const batches = useBatches();
+  const { rows: batches, headerProps } = useSortedRows(useBatches(), BATCH_SORTS);
   const setActive = useSetBatchActive();
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
@@ -50,11 +59,11 @@ export function BatchTable() {
       <table className="tbl stack" style={{ minWidth: 720 }}>
         <thead>
           <tr>
-            <th>Batch id</th>
-            <th>Name</th>
-            <th className="num">Students</th>
-            <th className="num">Can sign in</th>
-            <th>Added</th>
+            <SortHeader label="Batch id" {...headerProps("id")} />
+            <SortHeader label="Name" {...headerProps("label")} />
+            <SortHeader label="Students" numeric {...headerProps("students", "desc")} />
+            <SortHeader label="Can sign in" numeric {...headerProps("active", "desc")} />
+            <SortHeader label="Added" {...headerProps("added", "desc")} />
             <th>Status</th>
             <th>Actions</th>
           </tr>

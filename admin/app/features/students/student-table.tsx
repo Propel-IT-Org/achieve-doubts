@@ -1,12 +1,19 @@
 import { Fragment, useState } from "react";
 import { toast } from "sonner";
 import { ActiveTag, ConfirmDeactivate } from "~/components/primitives";
+import { SortHeader } from "~/components/table-sort";
 import { formatDate, share } from "~/lib/format";
 import { useSetStudentActive } from "~/lib/mutations";
-import { type StudentRow, useStudents } from "~/lib/queries";
+import {
+  STUDENTS_PAGE_SIZE,
+  type StudentQuery,
+  type StudentRow,
+  type StudentSort,
+  useStudents,
+} from "~/lib/queries";
 
 /** "{n} students, {a} active" — lives beside the search box. */
-export function StudentCount({ query }: { query: string }) {
+export function StudentCount({ query }: { query: StudentQuery }) {
   const { total, active } = useStudents(query);
   return (
     <>
@@ -33,20 +40,39 @@ export function StudentTable({
   query,
   selected,
   onOpen,
+  onSort,
 }: {
-  query: string;
+  query: StudentQuery;
   selected: string | null;
   onOpen: (id: string) => void;
+  /** Sorting is the API's job here: only one page is loaded. */
+  onSort: (sort: StudentSort) => void;
 }) {
   const { students } = useStudents(query);
   const { run, busy } = useStudentActivation();
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
+  // Pressing the sorted column again reverses it; a new column starts in the
+  // direction the API uses by default for it.
+  const sortable = (key: StudentSort, label: string, numeric?: boolean) => {
+    const natural = key === "name" ? "asc" : "desc";
+    const active = query.sort === key;
+    return (
+      <SortHeader
+        label={label}
+        numeric={numeric}
+        active={active}
+        dir={active ? (query.dir ?? natural) : natural}
+        onSort={() => onSort(key)}
+      />
+    );
+  };
+
   if (!students.length) {
     return (
       <div className="table-wrap stack-wrap">
         <div style={{ padding: 28, textAlign: "center" }} className="muted">
-          {query ? `No students match "${query}".` : "No students yet."}
+          {query.q ? `No students match "${query.q}".` : "No students yet."}
         </div>
       </div>
     );
@@ -84,12 +110,12 @@ export function StudentTable({
       <table className="tbl stack" style={{ minWidth: 860 }}>
         <thead>
           <tr>
-            <th>Name</th>
+            {sortable("name", "Name")}
             <th>College</th>
             <th>District</th>
-            <th className="num">Questions</th>
-            <th className="num">Satisfaction</th>
-            <th>Joined</th>
+            {sortable("asked", "Questions", true)}
+            {sortable("satisfaction", "Satisfaction", true)}
+            {sortable("recent", "Joined")}
             <th>Status</th>
             <th>Actions</th>
           </tr>
@@ -157,6 +183,48 @@ export function StudentTable({
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/** Prev/Next over the API's offset, with the range this page covers. */
+export function StudentPager({
+  query,
+  onPage,
+}: {
+  query: StudentQuery;
+  onPage: (page: number) => void;
+}) {
+  const { students, total } = useStudents(query);
+  if (total <= STUDENTS_PAGE_SIZE) return null;
+
+  const first = (query.page - 1) * STUDENTS_PAGE_SIZE + 1;
+  const last = first + students.length - 1;
+  const pages = Math.max(1, Math.ceil(total / STUDENTS_PAGE_SIZE));
+
+  return (
+    <div className="pager">
+      <span aria-live="polite">
+        Showing {first}–{last} of {total}
+      </span>
+      <span className="spacer">
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          disabled={query.page <= 1}
+          onClick={() => onPage(query.page - 1)}
+        >
+          Previous
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          disabled={query.page >= pages}
+          onClick={() => onPage(query.page + 1)}
+        >
+          Next
+        </button>
+      </span>
     </div>
   );
 }

@@ -1,9 +1,19 @@
 import { Fragment, useState } from "react";
 import { toast } from "sonner";
 import { ActiveTag, ConfirmDeactivate } from "~/components/primitives";
+import { type SortAccessors, SortHeader, useSortedRows } from "~/components/table-sort";
 import { fmt, pct } from "~/lib/format";
 import { useSetSolverActive, useSetSolverAdmin } from "~/lib/mutations";
 import { type SolverRow, solverCredentials, useSolvers } from "~/lib/queries";
+
+/** Defined once: a new object each render would re-sort every time. */
+const SOLVER_SORTS: SortAccessors<SolverRow> = {
+  name: (s) => s.name,
+  institution: (s) => solverCredentials(s),
+  answered: (s) => s.solved,
+  satisfaction: (s) => s.satisfactionRate,
+  pending: (s) => s.pendingFollowups,
+};
 
 export function SolverCount() {
   const solvers = useSolvers();
@@ -16,7 +26,7 @@ export function SolverCount() {
 }
 
 export function SolverTable() {
-  const solvers = useSolvers();
+  const { rows: solvers, headerProps } = useSortedRows(useSolvers(), SOLVER_SORTS);
   const setActive = useSetSolverActive();
   const setAdmin = useSetSolverAdmin();
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -57,12 +67,12 @@ export function SolverTable() {
       <table className="tbl stack" style={{ minWidth: 760 }}>
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Institution</th>
+            <SortHeader label="Name" {...headerProps("name")} />
+            <SortHeader label="Institution" {...headerProps("institution")} />
             <th>Status</th>
-            <th className="num">Answered</th>
-            <th className="num">Satisfaction</th>
-            <th className="num">Open follow-ups</th>
+            <SortHeader label="Answered" numeric {...headerProps("answered", "desc")} />
+            <SortHeader label="Satisfaction" numeric {...headerProps("satisfaction", "desc")} />
+            <SortHeader label="Open follow-ups" numeric {...headerProps("pending", "desc")} />
             <th>Actions</th>
           </tr>
         </thead>
