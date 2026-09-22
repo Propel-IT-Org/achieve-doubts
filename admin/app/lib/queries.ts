@@ -11,12 +11,19 @@ import { api, unwrap } from "./api";
 // ---------- taxonomy ----------
 
 export type Chapter = { id: number; number: number; nameEn: string; nameBn: string };
-export type Book = { id: string; nameEn: string; nameBn: string; chapters: Chapter[] };
+export type Book = {
+  id: string;
+  nameEn: string;
+  nameBn: string;
+  sort: number;
+  chapters: Chapter[];
+};
 export type Subject = {
   id: string;
   levelId: string;
   nameEn: string;
   nameBn: string;
+  sort: number;
   books: Book[];
 };
 /** A class, with its subjects nested: the API groups, the client renders. */

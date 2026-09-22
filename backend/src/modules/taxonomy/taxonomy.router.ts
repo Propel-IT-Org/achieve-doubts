@@ -21,10 +21,10 @@ export const taxonomyRouter = new Hono<AppEnv>().get(
 		const user = c.var.user;
 		const levelId = user ? await taxonomy.levelForUser(user.id) : null;
 
-		c.header(
-			"Cache-Control",
-			`${levelId ? "private" : "public"}, max-age=${TTL_SECONDS}`,
-		);
+		// Private, always: the same URL answers differently per student, and
+		// a shared cache has no business holding one student's syllabus.
+		c.header("Cache-Control", `private, max-age=${TTL_SECONDS}`);
+		c.header("Vary", "Cookie");
 		return c.json(await taxonomy.tree(levelId));
 	},
 );

@@ -109,10 +109,14 @@ export function TaxonomyTree() {
     }
   };
 
+  const isOpen = (kind: TaxonomyKind, action: "create" | "update", id: string) =>
+    form?.kind === kind && form.action === action && form.id === id;
+
   /** The add or edit form, when it belongs to this row. */
   const formFor = (kind: TaxonomyKind, action: "create" | "update", id: string) =>
-    form && form.kind === kind && form.action === action && form.id === id ? (
+    isOpen(kind, action, id) && form ? (
       <NodeForm
+        key={key(kind, action, id)}
         legend={`${action === "create" ? "Add" : "Edit"} ${kind}`}
         positionLabel={POSITION_LABEL[kind]}
         minPosition={kind === "chapter" ? 1 : 0}
@@ -135,13 +139,18 @@ export function TaxonomyTree() {
         <button
           type="button"
           className="btn btn-ghost btn-sm"
+          aria-expanded={isOpen(add.kind, "create", id)}
           onClick={() =>
-            setForm({
-              kind: add.kind,
-              action: "create",
-              id,
-              defaults: { nameEn: "", nameBn: "", position: add.nextPosition },
-            })
+            setForm(
+              isOpen(add.kind, "create", id)
+                ? null
+                : {
+                    kind: add.kind,
+                    action: "create",
+                    id,
+                    defaults: { nameEn: "", nameBn: "", position: add.nextPosition },
+                  },
+            )
           }
         >
           <Plus size={14} />
@@ -151,9 +160,13 @@ export function TaxonomyTree() {
       <button
         type="button"
         className="btn btn-ghost btn-sm"
-        aria-expanded={Boolean(formFor(kind, "update", id))}
+        aria-expanded={isOpen(kind, "update", id)}
         onClick={() =>
-          setForm({ kind, action: "update", id, defaults: edit })
+          setForm(
+            isOpen(kind, "update", id)
+              ? null
+              : { kind, action: "update", id, defaults: edit },
+          )
         }
       >
         <Pencil size={14} />
@@ -204,13 +217,18 @@ export function TaxonomyTree() {
         <button
           type="button"
           className="btn btn-primary"
+          aria-expanded={isOpen("level", "create", "")}
           onClick={() =>
-            setForm({
-              kind: "level",
-              action: "create",
-              id: "",
-              defaults: { nameEn: "", nameBn: "", position: levels.length },
-            })
+            setForm(
+              isOpen("level", "create", "")
+                ? null
+                : {
+                    kind: "level",
+                    action: "create",
+                    id: "",
+                    defaults: { nameEn: "", nameBn: "", position: levels.length },
+                  },
+            )
           }
         >
           <Plus size={16} />
@@ -249,7 +267,7 @@ export function TaxonomyTree() {
           {formFor("subject", "create", level.id)}
 
           <ul className="tax-kids">
-            {level.subjects.map((subject, subjectIndex) => (
+            {level.subjects.map((subject) => (
               <li key={subject.id}>
                 <div className="tax-node">
                   <button
@@ -278,7 +296,7 @@ export function TaxonomyTree() {
                     {
                       nameEn: subject.nameEn,
                       nameBn: subject.nameBn,
-                      position: subjectIndex,
+                      position: subject.sort,
                     },
                     { kind: "book", nextPosition: subject.books.length },
                   )}
@@ -288,7 +306,7 @@ export function TaxonomyTree() {
 
                 {expanded.has(subject.id) && (
                   <ul className="tax-kids">
-                    {subject.books.map((book, bookIndex) => (
+                    {subject.books.map((book) => (
                       <li key={book.id}>
                         <div className="tax-node">
                           <button
@@ -317,7 +335,7 @@ export function TaxonomyTree() {
                             {
                               nameEn: book.nameEn,
                               nameBn: book.nameBn,
-                              position: bookIndex,
+                              position: book.sort,
                             },
                             {
                               kind: "chapter",

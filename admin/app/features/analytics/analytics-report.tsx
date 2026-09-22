@@ -105,7 +105,7 @@ export function AnalyticsCharts({ filters }: { filters: RangeFilters }) {
   const totals = new Map(data.perSubject.map((s) => [s.subjectId, s.total]));
   // Two classes can both have a "Physics", so a bar says which one only
   // when there is more than one class to confuse it with.
-  const manyLevels = levels.length > 1;
+  const manyLevels = levels.filter((level) => level.subjects.length > 0).length > 1;
   const perSubject = levels.flatMap((level) =>
     level.subjects.map((s) => ({
       name: manyLevels ? `${s.nameEn} · ${level.nameEn}` : s.nameEn,

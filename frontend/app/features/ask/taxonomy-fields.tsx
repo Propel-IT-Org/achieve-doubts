@@ -22,9 +22,11 @@ export function TaxonomyFieldsPlaceholder() {
 
 /** Cascading subject → book → chapter selects. Suspends on the taxonomy. */
 export function TaxonomyFields() {
-  // A student's tree holds exactly their class, so this is a flatten, not
-  // a filter — the API already decided which subjects they may ask under.
-  const subjects = useTaxonomyTree().flatMap((level) => level.subjects);
+  // A student's tree holds exactly their class. It can hold more than one
+  // when their batch has no class set, hence the group labels — the API
+  // decides which subjects they may ask under, never this.
+  const levels = useTaxonomyTree();
+  const subjects = levels.flatMap((level) => level.subjects);
   const { register, watch, setValue } = useFormContext<AskForm>();
 
   const subjectId = watch("subjectId");
@@ -79,10 +81,14 @@ export function TaxonomyFields() {
           }}
         >
           <option value="">Choose</option>
-          {subjects.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.nameEn}
-            </option>
+          {levels.map((level) => (
+            <optgroup key={level.id} label={level.nameEn}>
+              {level.subjects.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.nameEn}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
       </label>

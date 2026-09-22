@@ -185,49 +185,64 @@ export type TaxonomyWrite =
 
 export type TaxonomyKind = TaxonomyWrite["kind"];
 
-function sendTaxonomyWrite(arg: TaxonomyWrite) {
-  const t = api.api.admin.taxonomy;
+type WriteOf<K extends TaxonomyKind> = Extract<TaxonomyWrite, { kind: K }>;
 
+const taxonomyApi = api.api.admin.taxonomy;
+
+function sendLevelWrite(arg: WriteOf<"level">) {
+  switch (arg.action) {
+    case "create":
+      return taxonomyApi.levels.$post({ json: arg.body });
+    case "update":
+      return taxonomyApi.levels[":id"].$patch({ param: { id: arg.id }, json: arg.body });
+    case "delete":
+      return taxonomyApi.levels[":id"].$delete({ param: { id: arg.id } });
+  }
+}
+
+function sendSubjectWrite(arg: WriteOf<"subject">) {
+  switch (arg.action) {
+    case "create":
+      return taxonomyApi.subjects.$post({ json: arg.body });
+    case "update":
+      return taxonomyApi.subjects[":id"].$patch({ param: { id: arg.id }, json: arg.body });
+    case "delete":
+      return taxonomyApi.subjects[":id"].$delete({ param: { id: arg.id } });
+  }
+}
+
+function sendBookWrite(arg: WriteOf<"book">) {
+  switch (arg.action) {
+    case "create":
+      return taxonomyApi.books.$post({ json: arg.body });
+    case "update":
+      return taxonomyApi.books[":id"].$patch({ param: { id: arg.id }, json: arg.body });
+    case "delete":
+      return taxonomyApi.books[":id"].$delete({ param: { id: arg.id } });
+  }
+}
+
+function sendChapterWrite(arg: WriteOf<"chapter">) {
+  switch (arg.action) {
+    case "create":
+      return taxonomyApi.chapters.$post({ json: arg.body });
+    case "update":
+      return taxonomyApi.chapters[":id"].$patch({ param: { id: arg.id }, json: arg.body });
+    case "delete":
+      return taxonomyApi.chapters[":id"].$delete({ param: { id: arg.id } });
+  }
+}
+
+function sendTaxonomyWrite(arg: TaxonomyWrite) {
   switch (arg.kind) {
     case "level":
-      switch (arg.action) {
-        case "create":
-          return t.levels.$post({ json: arg.body });
-        case "update":
-          return t.levels[":id"].$patch({ param: { id: arg.id }, json: arg.body });
-        case "delete":
-          return t.levels[":id"].$delete({ param: { id: arg.id } });
-      }
-    // biome-ignore lint/correctness/noFallthroughSwitchClause: every inner switch returns
+      return sendLevelWrite(arg);
     case "subject":
-      switch (arg.action) {
-        case "create":
-          return t.subjects.$post({ json: arg.body });
-        case "update":
-          return t.subjects[":id"].$patch({ param: { id: arg.id }, json: arg.body });
-        case "delete":
-          return t.subjects[":id"].$delete({ param: { id: arg.id } });
-      }
-    // biome-ignore lint/correctness/noFallthroughSwitchClause: every inner switch returns
+      return sendSubjectWrite(arg);
     case "book":
-      switch (arg.action) {
-        case "create":
-          return t.books.$post({ json: arg.body });
-        case "update":
-          return t.books[":id"].$patch({ param: { id: arg.id }, json: arg.body });
-        case "delete":
-          return t.books[":id"].$delete({ param: { id: arg.id } });
-      }
-    // biome-ignore lint/correctness/noFallthroughSwitchClause: every inner switch returns
+      return sendBookWrite(arg);
     case "chapter":
-      switch (arg.action) {
-        case "create":
-          return t.chapters.$post({ json: arg.body });
-        case "update":
-          return t.chapters[":id"].$patch({ param: { id: arg.id }, json: arg.body });
-        case "delete":
-          return t.chapters[":id"].$delete({ param: { id: arg.id } });
-      }
+      return sendChapterWrite(arg);
   }
 }
 

@@ -2,10 +2,10 @@ import { and, asc, count, eq, max, ne } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { DB } from "../../db";
 import {
+	auditLog,
 	batches,
 	books,
 	chapters,
-	auditLog,
 	levels,
 	questions,
 	studentProfiles,
@@ -23,6 +23,21 @@ const taxonomyCacheKey = (levelId: string | null) =>
 /** A question already filed under a row is why that row can't be deleted. */
 const inUse = (what: string, used: number) =>
 	`${used} ${used === 1 ? "question is" : "questions are"} filed under this ${what}`;
+
+/** One audit row, so each write states who changed what in one line. */
+const entry = (
+	actorId: string,
+	action: string,
+	entityType: string,
+	entityId: string,
+	meta?: Record<string, unknown>,
+) => ({
+	actorId,
+	action: `taxonomy.${action}`,
+	entityType,
+	entityId,
+	meta: meta ?? null,
+});
 
 /** Ids are internal, so they are made from the English name, not typed in. */
 function slugify(name: string) {
@@ -93,20 +108,24 @@ export class TaxonomyService {
 
 	// ---------- editing ----------
 	//
-	// Staff maintain the tree from the admin panel. Every write drops the
-	// cached trees, so the next read shows the edit rather than whatever the
-	// TTL still holds.
+	// Staff maintain the tree from the admin panel. Each write and its audit
+	// entry commit together, and the cached trees are dropped afterwards so
+	// the next read shows the edit rather than whatever the TTL still holds.
 
 	async createLevel(
 		input: { nameEn: string; nameBn: string; sort: number },
 		actorId: string,
 	) {
 		const id = await this.freeId(levels, slugify(input.nameEn));
-		const [row] = await this.db
-			.insert(levels)
-			.values({ id, ...input })
-			.returning();
-		await this.audit(actorId, "taxonomy.level.create", "level", id);
+		const row = await this.db.transaction(async (tx) => {
+			const [created] = await tx
+				.insert(levels)
+				.values({ id, ...input })
+				.returning();
+			await tx.insert(auditLog).values(entry(actorId, "level.create", "level", id));
+			return created;
+		});
+
 		await this.dropCaches();
 		return { row };
 	}
@@ -116,13 +135,20 @@ export class TaxonomyService {
 		input: { nameEn?: string; nameBn?: string; sort?: number },
 		actorId: string,
 	) {
-		const [row] = await this.db
-			.update(levels)
-			.set(input)
-			.where(eq(levels.id, id))
-			.returning();
+		const row = await this.db.transaction(async (tx) => {
+			const [updated] = await tx
+				.update(levels)
+				.set(input)
+				.where(eq(levels.id, id))
+				.returning();
+			if (!updated) return undefined;
+			await tx
+				.insert(auditLog)
+				.values(entry(actorId, "level.update", "level", id, input));
+			return updated;
+		});
+
 		if (!row) return { error: "Class not found" as const };
-		await this.audit(actorId, "taxonomy.level.update", "level", id, input);
 		await this.dropCaches();
 		return { row };
 	}
@@ -143,12 +169,14 @@ export class TaxonomyService {
 			return { error: "Batches are still on this class" as const };
 		}
 
-		const [row] = await this.db
-			.delete(levels)
-			.where(eq(levels.id, id))
-			.returning();
+		const row = await this.db.transaction(async (tx) => {
+			const [deleted] = await tx.delete(levels).where(eq(levels.id, id)).returning();
+			if (!deleted) return undefined;
+			await tx.insert(auditLog).values(entry(actorId, "level.delete", "level", id));
+			return deleted;
+		});
+
 		if (!row) return { error: "Class not found" as const };
-		await this.audit(actorId, "taxonomy.level.delete", "level", id);
 		await this.dropCaches();
 		return { row };
 	}
@@ -162,11 +190,17 @@ export class TaxonomyService {
 		}
 
 		const id = await this.freeId(subjects, slugify(input.nameEn));
-		const [row] = await this.db
-			.insert(subjects)
-			.values({ id, ...input })
-			.returning();
-		await this.audit(actorId, "taxonomy.subject.create", "subject", id);
+		const row = await this.db.transaction(async (tx) => {
+			const [created] = await tx
+				.insert(subjects)
+				.values({ id, ...input })
+				.returning();
+			await tx
+				.insert(auditLog)
+				.values(entry(actorId, "subject.create", "subject", id));
+			return created;
+		});
+
 		await this.dropCaches();
 		return { row };
 	}
@@ -185,13 +219,20 @@ export class TaxonomyService {
 			return { error: "Class not found" as const };
 		}
 
-		const [row] = await this.db
-			.update(subjects)
-			.set(input)
-			.where(eq(subjects.id, id))
-			.returning();
+		const row = await this.db.transaction(async (tx) => {
+			const [updated] = await tx
+				.update(subjects)
+				.set(input)
+				.where(eq(subjects.id, id))
+				.returning();
+			if (!updated) return undefined;
+			await tx
+				.insert(auditLog)
+				.values(entry(actorId, "subject.update", "subject", id, input));
+			return updated;
+		});
+
 		if (!row) return { error: "Subject not found" as const };
-		await this.audit(actorId, "taxonomy.subject.update", "subject", id, input);
 		await this.dropCaches();
 		return { row };
 	}
@@ -200,12 +241,16 @@ export class TaxonomyService {
 		const used = await this.countRows(questions, eq(questions.subjectId, id));
 		if (used > 0) return { error: inUse("subject", used) };
 
-		const [row] = await this.db
-			.delete(subjects)
-			.where(eq(subjects.id, id))
-			.returning();
+		const row = await this.db.transaction(async (tx) => {
+			const [deleted] = await tx.delete(subjects).where(eq(subjects.id, id)).returning();
+			if (!deleted) return undefined;
+			await tx
+				.insert(auditLog)
+				.values(entry(actorId, "subject.delete", "subject", id));
+			return deleted;
+		});
+
 		if (!row) return { error: "Subject not found" as const };
-		await this.audit(actorId, "taxonomy.subject.delete", "subject", id);
 		await this.dropCaches();
 		return { row };
 	}
@@ -219,13 +264,16 @@ export class TaxonomyService {
 		}
 
 		// The seed's ids read "phy1-tapan"; new ones keep that shape.
-		const base = `${input.subjectId}-${slugify(input.nameEn)}`;
-		const id = await this.freeId(books, base);
-		const [row] = await this.db
-			.insert(books)
-			.values({ id, ...input })
-			.returning();
-		await this.audit(actorId, "taxonomy.book.create", "book", id);
+		const id = await this.freeId(books, `${input.subjectId}-${slugify(input.nameEn)}`);
+		const row = await this.db.transaction(async (tx) => {
+			const [created] = await tx
+				.insert(books)
+				.values({ id, ...input })
+				.returning();
+			await tx.insert(auditLog).values(entry(actorId, "book.create", "book", id));
+			return created;
+		});
+
 		await this.dropCaches();
 		return { row };
 	}
@@ -235,13 +283,18 @@ export class TaxonomyService {
 		input: { nameEn?: string; nameBn?: string; sort?: number },
 		actorId: string,
 	) {
-		const [row] = await this.db
-			.update(books)
-			.set(input)
-			.where(eq(books.id, id))
-			.returning();
+		const row = await this.db.transaction(async (tx) => {
+			const [updated] = await tx
+				.update(books)
+				.set(input)
+				.where(eq(books.id, id))
+				.returning();
+			if (!updated) return undefined;
+			await tx.insert(auditLog).values(entry(actorId, "book.update", "book", id, input));
+			return updated;
+		});
+
 		if (!row) return { error: "Book not found" as const };
-		await this.audit(actorId, "taxonomy.book.update", "book", id, input);
 		await this.dropCaches();
 		return { row };
 	}
@@ -250,12 +303,14 @@ export class TaxonomyService {
 		const used = await this.countRows(questions, eq(questions.bookId, id));
 		if (used > 0) return { error: inUse("book", used) };
 
-		const [row] = await this.db
-			.delete(books)
-			.where(eq(books.id, id))
-			.returning();
+		const row = await this.db.transaction(async (tx) => {
+			const [deleted] = await tx.delete(books).where(eq(books.id, id)).returning();
+			if (!deleted) return undefined;
+			await tx.insert(auditLog).values(entry(actorId, "book.delete", "book", id));
+			return deleted;
+		});
+
 		if (!row) return { error: "Book not found" as const };
-		await this.audit(actorId, "taxonomy.book.delete", "book", id);
 		await this.dropCaches();
 		return { row };
 	}
@@ -274,16 +329,22 @@ export class TaxonomyService {
 			return { error: `Chapter ${number} already exists in this book` };
 		}
 
-		const [row] = await this.db
-			.insert(chapters)
-			.values({
-				bookId: input.bookId,
-				number,
-				nameEn: input.nameEn,
-				nameBn: input.nameBn,
-			})
-			.returning();
-		await this.audit(actorId, "taxonomy.chapter.create", "chapter", String(row?.id));
+		const row = await this.db.transaction(async (tx) => {
+			const [created] = await tx
+				.insert(chapters)
+				.values({
+					bookId: input.bookId,
+					number,
+					nameEn: input.nameEn,
+					nameBn: input.nameBn,
+				})
+				.returning();
+			await tx
+				.insert(auditLog)
+				.values(entry(actorId, "chapter.create", "chapter", String(created?.id)));
+			return created;
+		});
+
 		await this.dropCaches();
 		return { row };
 	}
@@ -306,13 +367,20 @@ export class TaxonomyService {
 			return { error: `Chapter ${input.number} already exists in this book` };
 		}
 
-		const [row] = await this.db
-			.update(chapters)
-			.set(input)
-			.where(eq(chapters.id, id))
-			.returning();
+		const row = await this.db.transaction(async (tx) => {
+			const [updated] = await tx
+				.update(chapters)
+				.set(input)
+				.where(eq(chapters.id, id))
+				.returning();
+			if (!updated) return undefined;
+			await tx
+				.insert(auditLog)
+				.values(entry(actorId, "chapter.update", "chapter", String(id), input));
+			return updated;
+		});
+
 		if (!row) return { error: "Chapter not found" };
-		await this.audit(actorId, "taxonomy.chapter.update", "chapter", String(id), input);
 		await this.dropCaches();
 		return { row };
 	}
@@ -321,12 +389,16 @@ export class TaxonomyService {
 		const used = await this.countRows(questions, eq(questions.chapterId, id));
 		if (used > 0) return { error: inUse("chapter", used) };
 
-		const [row] = await this.db
-			.delete(chapters)
-			.where(eq(chapters.id, id))
-			.returning();
+		const row = await this.db.transaction(async (tx) => {
+			const [deleted] = await tx.delete(chapters).where(eq(chapters.id, id)).returning();
+			if (!deleted) return undefined;
+			await tx
+				.insert(auditLog)
+				.values(entry(actorId, "chapter.delete", "chapter", String(id)));
+			return deleted;
+		});
+
 		if (!row) return { error: "Chapter not found" };
-		await this.audit(actorId, "taxonomy.chapter.delete", "chapter", String(id));
 		await this.dropCaches();
 		return { row };
 	}
@@ -388,19 +460,6 @@ export class TaxonomyService {
 			const id = `${base.slice(0, 32 - suffix.length)}${suffix}`;
 			if (!(await this.exists(table, id))) return id;
 		}
-	}
-
-	/** Staff edit the syllabus rarely and consequentially: keep a trail. */
-	private async audit(
-		actorId: string,
-		action: string,
-		entityType: string,
-		entityId: string,
-		meta?: Record<string, unknown>,
-	) {
-		await this.db
-			.insert(auditLog)
-			.values({ actorId, action, entityType, entityId, meta: meta ?? null });
 	}
 
 	/**
