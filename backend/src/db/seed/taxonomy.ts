@@ -1,14 +1,19 @@
 import { eq, inArray, notInArray } from "drizzle-orm";
 import type { DB } from "..";
-import { books, chapters, questions, subjects } from "../schema";
+import { batches, books, chapters, levels, questions, subjects } from "../schema";
 
 /**
- * The HSC taxonomy, from "HSC Subjects and Chapters (Bangladesh)" — the
+ * The taxonomy, from "HSC Subjects and Chapters (Bangladesh)" — the
  * syllabus document the product team maintains:
  *
+ *   level    a class             Class 11-12 (HSC)
  *   subject  a paper             Physics 1st paper
  *   book     an author's book    Dr. Shahjahan Tapan, … (for that paper)
  *   chapter  that book's chapter Newtonian mechanics
+ *
+ * Only the HSC level has a syllabus document so far. The other classes are
+ * seeded empty so batches can already be put on them; their papers, books
+ * and chapters go in LEVELS as the documents arrive.
  *
  * Every book of a paper has the paper's chapter list. Bengali names are the
  * document's (one typo fixed, noted below); English names are for the UI.
@@ -21,6 +26,7 @@ import { books, chapters, questions, subjects } from "../schema";
 type Name = { en: string; bn: string };
 type Author = Name & { key: string };
 type Paper = Name & { id: string; authors: Author[]; chapters: Name[] };
+type Level = Name & { id: string; papers: Paper[] };
 
 // Physics, Chemistry, Higher Math and ICT authors write both papers;
 // Biology's are separate for Botany (1st) and Zoology (2nd).
@@ -72,7 +78,7 @@ const ICT_AUTHORS: Author[] = [
 	},
 ];
 
-export const PAPERS: Paper[] = [
+const HSC_PAPERS: Paper[] = [
 	{
 		id: "phy1",
 		en: "Physics 1st paper",
@@ -309,6 +315,22 @@ export const PAPERS: Paper[] = [
 	},
 ];
 
+/**
+ * A student's batch decides which of these they see (batches.level_id), so
+ * ids are stable: changing one strands every batch pointing at it.
+ */
+export const LEVELS: Level[] = [
+	{ id: "class-5", en: "Class 5", bn: "পঞ্চম শ্রেণি", papers: [] },
+	{ id: "class-8", en: "Class 8", bn: "অষ্টম শ্রেণি", papers: [] },
+	{ id: "class-9-10", en: "Class 9–10 (SSC)", bn: "নবম-দশম শ্রেণি", papers: [] },
+	{
+		id: "class-11-12",
+		en: "Class 11–12 (HSC)",
+		bn: "একাদশ-দ্বাদশ শ্রেণি",
+		papers: HSC_PAPERS,
+	},
+];
+
 const nfc = ({ en, bn }: Name) => ({
 	nameEn: en.normalize("NFC"),
 	nameBn: bn.normalize("NFC"),
@@ -323,35 +345,47 @@ const bookId = (paper: Paper, author: Author) => `${paper.id}-${author.key}`;
 export async function seedTaxonomy(db: DB) {
 	await db.transaction(async (tx) => {
 		const db = tx as unknown as DB;
+		const levelIds: string[] = [];
 		const subjectIds: string[] = [];
 		const bookIds: string[] = [];
 
-		for (const [s, paper] of PAPERS.entries()) {
-			subjectIds.push(paper.id);
+		for (const [l, level] of LEVELS.entries()) {
+			levelIds.push(level.id);
 			await db
-				.insert(subjects)
-				.values({ id: paper.id, ...nfc(paper), sort: s })
-				.onConflictDoUpdate({ target: subjects.id, set: { ...nfc(paper), sort: s } });
+				.insert(levels)
+				.values({ id: level.id, ...nfc(level), sort: l })
+				.onConflictDoUpdate({ target: levels.id, set: { ...nfc(level), sort: l } });
 
-			for (const [b, author] of paper.authors.entries()) {
-				const id = bookId(paper, author);
-				bookIds.push(id);
+			for (const [s, paper] of level.papers.entries()) {
+				subjectIds.push(paper.id);
 				await db
-					.insert(books)
-					.values({ id, subjectId: paper.id, ...nfc(author), sort: b })
+					.insert(subjects)
+					.values({ id: paper.id, levelId: level.id, ...nfc(paper), sort: s })
 					.onConflictDoUpdate({
-						target: books.id,
-						set: { subjectId: paper.id, ...nfc(author), sort: b },
+						target: subjects.id,
+						set: { levelId: level.id, ...nfc(paper), sort: s },
 					});
 
-				for (const [c, chapter] of paper.chapters.entries()) {
+				for (const [b, author] of paper.authors.entries()) {
+					const id = bookId(paper, author);
+					bookIds.push(id);
 					await db
-						.insert(chapters)
-						.values({ bookId: id, number: c + 1, ...nfc(chapter) })
+						.insert(books)
+						.values({ id, subjectId: paper.id, ...nfc(author), sort: b })
 						.onConflictDoUpdate({
-							target: [chapters.bookId, chapters.number],
-							set: nfc(chapter),
+							target: books.id,
+							set: { subjectId: paper.id, ...nfc(author), sort: b },
 						});
+
+					for (const [c, chapter] of paper.chapters.entries()) {
+						await db
+							.insert(chapters)
+							.values({ bookId: id, number: c + 1, ...nfc(chapter) })
+							.onConflictDoUpdate({
+								target: [chapters.bookId, chapters.number],
+								set: nfc(chapter),
+							});
+					}
 				}
 			}
 		}
@@ -363,6 +397,19 @@ export async function seedTaxonomy(db: DB) {
 		await db.delete(chapters).where(notInArray(chapters.bookId, bookIds));
 		await db.delete(books).where(notInArray(books.id, bookIds));
 		await db.delete(subjects).where(notInArray(subjects.id, subjectIds));
+
+		// batches.level_id has no foreign key (it lives in a better-auth
+		// generated table), so dropping a level out from under a batch is
+		// the one thing this seed has to check for itself.
+		const stranded = await db
+			.select({ id: batches.id, levelId: batches.levelId })
+			.from(batches)
+			.where(notInArray(batches.levelId, levelIds));
+		if (stranded.length > 0) {
+			const list = stranded.map((b) => `${b.id} (${b.levelId})`).join(", ");
+			throw new Error(`These batches are on a level the seed no longer lists: ${list}`);
+		}
+		await db.delete(levels).where(notInArray(levels.id, levelIds));
 	});
 }
 

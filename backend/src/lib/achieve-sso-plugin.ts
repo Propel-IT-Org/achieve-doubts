@@ -104,6 +104,13 @@ export function achieveSsoPlugin(): BetterAuthPlugin {
         fields: {
           label: { type: "string", required: true },
           active: { type: "boolean", required: true },
+          // The class this cohort studies (levels.id). Its students see
+          // that level's taxonomy and no other; null until staff pick one.
+          // No `references`: the generator only resolves models better-auth
+          // owns, and `levels` is ours (db/schema/taxonomy.ts). The admin
+          // service checks the level exists, and the taxonomy seed refuses
+          // to drop a level a batch still points at.
+          levelId: { type: "string", required: false },
           createdAt: {
             type: "date",
             required: true,

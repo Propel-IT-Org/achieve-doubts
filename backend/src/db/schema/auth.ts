@@ -89,6 +89,7 @@ export const batches = pgTable("batches", {
 	id: text("id").primaryKey(),
 	label: text("label").notNull(),
 	active: boolean("active").notNull(),
+	levelId: text("level_id"),
 	createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -56,6 +56,14 @@ export const questionsRouter = new Hono<AppEnv>()
             "That chapter doesn't belong to the selected book and subject",
           );
         }
+        if (result.reason === "level") {
+          return fail(
+            c,
+            400,
+            "VALIDATION_FAILED",
+            "That subject isn't in your class's syllabus",
+          );
+        }
         const message =
           result.reason === "daily"
             ? "Daily question limit reached"

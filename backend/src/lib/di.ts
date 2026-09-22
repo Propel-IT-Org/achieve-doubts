@@ -9,6 +9,7 @@ import { SolutionsService } from "../modules/interaction/solutions.service";
 import { ThreadService } from "../modules/interaction/thread.service";
 import { QuestionsService } from "../modules/questions/questions.service";
 import { ReportsService } from "../modules/reports/reports.service";
+import { TaxonomyService } from "../modules/taxonomy/taxonomy.service";
 import { UploadService } from "../modules/upload/upload.service";
 import { FeedHub } from "../ws/hub";
 import { createAuth } from "./auth";
@@ -20,7 +21,8 @@ export function buildContainer() {
     .registerFactory("auth", (c) => createAuth(c.get("db")), ["db"])
     .registerFactory("s3", createS3)
     .registerClass("upload", UploadService, ["s3"])
-    .registerClass("questions", QuestionsService, ["db"])
+    .registerClass("taxonomy", TaxonomyService, ["db"])
+    .registerClass("questions", QuestionsService, ["db", "taxonomy"])
     .registerClass("solutions", SolutionsService, ["db"])
     .registerClass("thread", ThreadService, ["db"])
     .registerClass("comments", CommentsService, ["db"])

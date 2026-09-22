@@ -36,7 +36,18 @@ export const solverAdminFlagSchema = z.object({ isAdminSolver: z.boolean() });
 export const createBatchSchema = z.object({
   id: z.string().min(1).max(64),
   label: z.string().min(1),
+  // The class this cohort studies. Optional: a batch with no class sees
+  // every level's taxonomy, which is what existing batches did.
+  levelId: z.string().min(1).max(32).nullable().default(null),
 });
+
+export const updateBatchSchema = z
+  .object({
+    label: z.string().min(1),
+    levelId: z.string().min(1).max(32).nullable(),
+  })
+  .partial()
+  .refine((v) => Object.keys(v).length > 0, "Nothing to update");
 
 export const quotaSchema = z.object({
   maxPerDay: z.number().int().positive().nullable(),

@@ -15,6 +15,7 @@ import {
   rankingsQuerySchema,
   solverAdminFlagSchema,
   studentSearchQuerySchema,
+  updateBatchSchema,
 } from "./admin.schema";
 
 /**
@@ -172,13 +173,44 @@ export const adminRouter = new Hono<AppEnv>()
     requirePermission({ batch: ["create"] }),
     zValidator("json", createBatchSchema, zodErrorHook),
     async (c) => {
-      const { id, label } = c.req.valid("json");
+      const { id, label, levelId } = c.req.valid("json");
       const result = await c.var.di
         .get("admin")
-        .createBatch(id, label, c.var.user.id);
-      if (result.error) return fail(c, 409, "CONFLICT", result.error);
+        .createBatch(id, label, levelId, c.var.user.id);
+      if (result.error) {
+        const unknownLevel = result.error === "That class doesn't exist";
+        return unknownLevel
+          ? fail(c, 400, "VALIDATION_FAILED", result.error)
+          : fail(c, 409, "CONFLICT", result.error);
+      }
       return c.json(result.batch, 201);
     },
+  )
+  .patch(
+    "/batches/:id",
+    requireAuth,
+    requirePermission({ batch: ["update"] }),
+    zValidator("json", updateBatchSchema, zodErrorHook),
+    async (c) => {
+      const result = await c.var.di
+        .get("admin")
+        .updateBatch(c.req.param("id"), c.req.valid("json"), c.var.user.id);
+
+      if (result.error) {
+        return result.error === "Batch not found"
+          ? fail(c, 404, "NOT_FOUND", result.error)
+          : fail(c, 400, "VALIDATION_FAILED", result.error);
+      }
+      return c.json(result.batch);
+    },
+  )
+  // ---------- levels ----------
+  // The classes a batch can be put on. Seeded, not editable here.
+  .get(
+    "/levels",
+    requireAuth,
+    requirePermission({ batch: ["list"] }),
+    async (c) => c.json(await c.var.di.get("taxonomy").listLevels()),
   )
   .post(
     "/batches/:id/active",

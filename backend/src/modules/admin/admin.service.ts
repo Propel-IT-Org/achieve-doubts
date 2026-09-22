@@ -19,6 +19,7 @@ import {
   askQuotaPolicies,
   auditLog,
   batches,
+  levels,
   payoutLines,
   payoutPeriods,
   questions,
@@ -189,9 +190,21 @@ export class AdminService {
 
   async getStudent(id: string) {
     const [row] = await this.db
-      .select()
+      .select({
+        user: getTableColumns(user),
+        student_profiles: getTableColumns(studentProfiles),
+        batch: {
+          id: batches.id,
+          label: batches.label,
+          active: batches.active,
+          levelId: batches.levelId,
+          levelName: levels.nameEn,
+        },
+      })
       .from(user)
       .leftJoin(studentProfiles, eq(studentProfiles.userId, user.id))
+      .leftJoin(batches, eq(batches.id, studentProfiles.batchId))
+      .leftJoin(levels, eq(levels.id, batches.levelId))
       .where(and(eq(user.id, id), eq(user.role, "student")));
 
     if (!row) return null;
@@ -205,7 +218,15 @@ export class AdminService {
       .from(questions)
       .where(and(eq(questions.askerId, id), isNull(questions.deletedAt)));
 
-    return { ...row, stats };
+    return {
+      ...row,
+      // count() comes back as a string over the wire, and "2" + "1" is "21".
+      stats: {
+        asked: Number(stats?.asked ?? 0),
+        satisfied: Number(stats?.satisfied ?? 0),
+        unsatisfied: Number(stats?.unsatisfied ?? 0),
+      },
+    };
   }
 
   /**
@@ -421,10 +442,12 @@ export class AdminService {
     const rows = await this.db
       .select({
         ...getTableColumns(batches),
+        levelName: levels.nameEn,
         students: enrolled.students,
         activeStudents: enrolled.activeStudents,
       })
       .from(batches)
+      .leftJoin(levels, eq(levels.id, batches.levelId))
       .leftJoin(enrolled, eq(enrolled.batchId, batches.id))
       .orderBy(desc(batches.createdAt));
 
@@ -441,7 +464,12 @@ export class AdminService {
    * handshake — it is compared as-is — so it is only trimmed, never
    * lower-cased or otherwise rewritten.
    */
-  async createBatch(rawId: string, rawLabel: string, actorId: string) {
+  async createBatch(
+    rawId: string,
+    rawLabel: string,
+    levelId: string | null,
+    actorId: string,
+  ) {
     const id = rawId.trim();
     const label = rawLabel.trim();
 
@@ -451,13 +479,61 @@ export class AdminService {
       .where(eq(batches.id, id));
     if (existing) return { error: "That batch already exists" as const };
 
+    if (levelId && !(await this.levelExists(levelId))) {
+      return { error: "That class doesn't exist" as const };
+    }
+
     const [row] = await this.db
       .insert(batches)
-      .values({ id, label, active: true, createdAt: new Date() })
+      .values({ id, label, active: true, levelId, createdAt: new Date() })
       .returning();
 
     await this.audit(actorId, "batch.create", "batch", id);
     return { batch: row };
+  }
+
+  /**
+   * The label and the class. The id is Achieve's and is never editable —
+   * changing it would orphan every student the SSO handshake put in it.
+   *
+   * Moving a batch to another class changes which syllabus its students can
+   * ask against; questions already asked keep their original taxonomy.
+   */
+  async updateBatch(
+    id: string,
+    input: { label?: string; levelId?: string | null },
+    actorId: string,
+  ) {
+    if (input.levelId && !(await this.levelExists(input.levelId))) {
+      return { error: "That class doesn't exist" as const };
+    }
+
+    const [row] = await this.db
+      .update(batches)
+      .set({
+        ...(input.label === undefined ? {} : { label: input.label.trim() }),
+        ...(input.levelId === undefined ? {} : { levelId: input.levelId }),
+      })
+      .where(eq(batches.id, id))
+      .returning();
+
+    if (!row) return { error: "Batch not found" as const };
+
+    await this.audit(actorId, "batch.update", "batch", id, input);
+    return { batch: row };
+  }
+
+  /**
+   * batches.level_id carries no foreign key — the column lives in a table
+   * better-auth generates, and its generator only references models it owns
+   * — so the check belongs here.
+   */
+  private async levelExists(levelId: string) {
+    const [level] = await this.db
+      .select({ id: levels.id })
+      .from(levels)
+      .where(eq(levels.id, levelId));
+    return Boolean(level);
   }
 
   /**

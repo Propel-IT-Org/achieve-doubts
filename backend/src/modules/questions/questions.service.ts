@@ -20,11 +20,13 @@ import {
   lockEvents,
   notifications,
   questions,
+  subjects,
   threadMessages,
 } from "../../db/schema";
 import { env } from "../../env";
 import { containsPattern } from "../interaction/shared";
 import { isLockBlocked, pendingFollowupsWhere } from "../profiles/solver-stats.util";
+import type { TaxonomyService } from "../taxonomy/taxonomy.service";
 import type {
   CreateQuestionInput,
   CursorPayload,
@@ -68,10 +70,13 @@ export type OverrideResult =
 
 export type CreateResult =
   | { ok: true; question: Question }
-  | { ok: false; reason: "daily" | "monthly" | "taxonomy" };
+  | { ok: false; reason: "daily" | "monthly" | "taxonomy" | "level" };
 
 export class QuestionsService {
-  constructor(private db: DB) {}
+  constructor(
+    private db: DB,
+    private taxonomy: TaxonomyService,
+  ) {}
 
   async listQuestionsFeed(query: ListQuestionsQuery, viewerId?: string) {
     const limit = query.limit;
@@ -201,9 +206,10 @@ export class QuestionsService {
     // book to that subject. A mismatched question would vanish from every
     // correctly filtered list.
     const [placement] = await this.db
-      .select({ id: chapters.id })
+      .select({ id: chapters.id, levelId: subjects.levelId })
       .from(chapters)
       .innerJoin(books, eq(books.id, chapters.bookId))
+      .innerJoin(subjects, eq(subjects.id, books.subjectId))
       .where(
         and(
           eq(chapters.id, input.chapterId),
@@ -213,6 +219,13 @@ export class QuestionsService {
       )
       .limit(1);
     if (!placement) return { ok: false, reason: "taxonomy" };
+
+    // The ask form only offers this student's own level, so a mismatch is a
+    // crafted request or a batch that moved class mid-session.
+    const askerLevel = await this.taxonomy.levelForUser(askerId);
+    if (askerLevel && placement.levelId !== askerLevel) {
+      return { ok: false, reason: "level" };
+    }
 
     const policy = await this.db.query.askQuotaPolicies.findFirst({
       where: and(
