@@ -220,6 +220,9 @@ export class AdminService {
 
     return {
       ...row,
+      // A whole table nullifies itself when a left join misses; an object
+      // built column by column comes back with every field null instead.
+      batch: row.batch.id ? row.batch : null,
       // count() comes back as a string over the wire, and "2" + "1" is "21".
       stats: {
         asked: Number(stats?.asked ?? 0),
