@@ -339,10 +339,15 @@ const nfc = ({ en, bn }: Name) => ({
 const bookId = (paper: Paper, author: Author) => `${paper.id}-${author.key}`;
 
 /**
- * Upserts the taxonomy and removes whatever the document no longer lists.
+ * Upserts the taxonomy from the documents above.
+ *
+ * Staff also maintain the tree from the admin panel, so by default this
+ * leaves rows it doesn't list alone — re-seeding must not delete a class
+ * somebody added there. Pass `{ prune: true }` (`bun run db:seed --prune`)
+ * to go back to "the documents are the whole truth" and drop the rest.
  * Idempotent, and all-or-nothing: it runs in one transaction.
  */
-export async function seedTaxonomy(db: DB) {
+export async function seedTaxonomy(db: DB, { prune = false } = {}) {
 	await db.transaction(async (tx) => {
 		const db = tx as unknown as DB;
 		const levelIds: string[] = [];
@@ -391,12 +396,7 @@ export async function seedTaxonomy(db: DB) {
 		}
 
 		await adoptLegacyQuestions(db, bookIds);
-
-		// Anything the document no longer lists. Questions were moved off
-		// these rows above, so nothing references them any more.
-		await db.delete(chapters).where(notInArray(chapters.bookId, bookIds));
-		await db.delete(books).where(notInArray(books.id, bookIds));
-		await db.delete(subjects).where(notInArray(subjects.id, subjectIds));
+		if (!prune) return;
 
 		// batches.level_id has no foreign key (it lives in a better-auth
 		// generated table), so dropping a level out from under a batch is
@@ -409,6 +409,12 @@ export async function seedTaxonomy(db: DB) {
 			const list = stranded.map((b) => `${b.id} (${b.levelId})`).join(", ");
 			throw new Error(`These batches are on a level the seed no longer lists: ${list}`);
 		}
+
+		// Anything the documents no longer list. Questions were moved off
+		// these rows above, so nothing references them any more.
+		await db.delete(chapters).where(notInArray(chapters.bookId, bookIds));
+		await db.delete(books).where(notInArray(books.id, bookIds));
+		await db.delete(subjects).where(notInArray(subjects.id, subjectIds));
 		await db.delete(levels).where(notInArray(levels.id, levelIds));
 	});
 }

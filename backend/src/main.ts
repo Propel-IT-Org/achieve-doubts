@@ -3,7 +3,9 @@
  *
  *   bun dist/main.js            serve (default)
  *   bun dist/main.js migrate    apply drizzle/ migrations, then exit
- *   bun dist/main.js seed       load the subject/book/chapter taxonomy
+ *   bun dist/main.js seed       load the class/subject/book/chapter tree
+ *                               (--prune also deletes what it doesn't list,
+ *                                including anything added in the admin panel)
  *   STAFF_PASSWORD=… bun dist/main.js create-staff <email> <name>
  *                               create an admin-panel (staff) account
  *   bun dist/main.js seed-solvers <accounts.json | ->
@@ -38,10 +40,15 @@ switch (command) {
       import("./db"),
       import("./db/seed/taxonomy"),
     ]);
+    const prune = process.argv.includes("--prune");
     const db = createDatabase();
-    await seedTaxonomy(db);
+    await seedTaxonomy(db, { prune });
     await db.$client.close();
-    console.log("[seed] taxonomy seeded");
+    console.log(
+      prune
+        ? "[seed] taxonomy seeded; rows it doesn't list were deleted"
+        : "[seed] taxonomy seeded; rows it doesn't list were left alone",
+    );
     process.exit(0);
   }
 

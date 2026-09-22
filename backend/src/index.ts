@@ -24,6 +24,7 @@ import { threadRouter } from "./modules/interaction/thread.router";
 import { profilesRouter } from "./modules/profiles/profiles.router";
 import { questionsRouter } from "./modules/questions/questions.router";
 import { reportsRouter } from "./modules/reports/reports.router";
+import { taxonomyAdminRouter } from "./modules/taxonomy/taxonomy.admin.router";
 import { taxonomyRouter } from "./modules/taxonomy/taxonomy.router";
 import { uploadRouter } from "./modules/upload/upload.router";
 import { getServer, websocket } from "./ws/hub";
@@ -200,6 +201,8 @@ export function createApp(customContainer: AppContainer = container) {
       .route("/", reportsRouter)
       .route("/", profilesRouter)
       .route("/admin", adminRouter)
+      // Staff-only editing of the tree the public router above reads.
+      .route("/admin/taxonomy", taxonomyAdminRouter)
   );
 }
 

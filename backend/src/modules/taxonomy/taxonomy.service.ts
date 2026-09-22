@@ -1,7 +1,17 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, count, eq, max, ne } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
 import type { DB } from "../../db";
-import { batches, levels, studentProfiles } from "../../db/schema";
-import { cached } from "../../lib/cache";
+import {
+	batches,
+	books,
+	chapters,
+	auditLog,
+	levels,
+	questions,
+	studentProfiles,
+	subjects,
+} from "../../db/schema";
+import { cached, invalidate } from "../../lib/cache";
 
 /** Staff edits drop the cache, so this only has to cover the read traffic. */
 const TTL_SECONDS = 300;
@@ -9,6 +19,21 @@ const TTL_SECONDS = 300;
 const LEVELS_CACHE_KEY = "cache:levels";
 const taxonomyCacheKey = (levelId: string | null) =>
 	`cache:taxonomy:${levelId ?? "all"}`;
+
+/** A question already filed under a row is why that row can't be deleted. */
+const inUse = (what: string, used: number) =>
+	`${used} ${used === 1 ? "question is" : "questions are"} filed under this ${what}`;
+
+/** Ids are internal, so they are made from the English name, not typed in. */
+function slugify(name: string) {
+	const slug = name
+		.normalize("NFKD")
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-+|-+$/g, "")
+		.slice(0, 24);
+	return slug || "item";
+}
 
 export class TaxonomyService {
 	constructor(private readonly db: DB) {}
@@ -63,6 +88,331 @@ export class TaxonomyService {
 					},
 				},
 			}),
+		);
+	}
+
+	// ---------- editing ----------
+	//
+	// Staff maintain the tree from the admin panel. Every write drops the
+	// cached trees, so the next read shows the edit rather than whatever the
+	// TTL still holds.
+
+	async createLevel(
+		input: { nameEn: string; nameBn: string; sort: number },
+		actorId: string,
+	) {
+		const id = await this.freeId(levels, slugify(input.nameEn));
+		const [row] = await this.db
+			.insert(levels)
+			.values({ id, ...input })
+			.returning();
+		await this.audit(actorId, "taxonomy.level.create", "level", id);
+		await this.dropCaches();
+		return { row };
+	}
+
+	async updateLevel(
+		id: string,
+		input: { nameEn?: string; nameBn?: string; sort?: number },
+		actorId: string,
+	) {
+		const [row] = await this.db
+			.update(levels)
+			.set(input)
+			.where(eq(levels.id, id))
+			.returning();
+		if (!row) return { error: "Class not found" as const };
+		await this.audit(actorId, "taxonomy.level.update", "level", id, input);
+		await this.dropCaches();
+		return { row };
+	}
+
+	/**
+	 * Only an empty class nobody is enrolled in. Its subjects would cascade
+	 * away with it, and its batches would point at nothing — batches.level_id
+	 * has no foreign key to stop that, so this does.
+	 */
+	async deleteLevel(id: string, actorId: string) {
+		const subjectCount = await this.countRows(subjects, eq(subjects.levelId, id));
+		if (subjectCount > 0) {
+			return { error: "Remove this class's subjects first" as const };
+		}
+
+		const batchCount = await this.countRows(batches, eq(batches.levelId, id));
+		if (batchCount > 0) {
+			return { error: "Batches are still on this class" as const };
+		}
+
+		const [row] = await this.db
+			.delete(levels)
+			.where(eq(levels.id, id))
+			.returning();
+		if (!row) return { error: "Class not found" as const };
+		await this.audit(actorId, "taxonomy.level.delete", "level", id);
+		await this.dropCaches();
+		return { row };
+	}
+
+	async createSubject(
+		input: { levelId: string; nameEn: string; nameBn: string; sort: number },
+		actorId: string,
+	) {
+		if (!(await this.exists(levels, input.levelId))) {
+			return { error: "Class not found" as const };
+		}
+
+		const id = await this.freeId(subjects, slugify(input.nameEn));
+		const [row] = await this.db
+			.insert(subjects)
+			.values({ id, ...input })
+			.returning();
+		await this.audit(actorId, "taxonomy.subject.create", "subject", id);
+		await this.dropCaches();
+		return { row };
+	}
+
+	/**
+	 * Moving a subject to another class takes its books, chapters and every
+	 * question already filed under it along — which is right: the question
+	 * was always about that subject.
+	 */
+	async updateSubject(
+		id: string,
+		input: { levelId?: string; nameEn?: string; nameBn?: string; sort?: number },
+		actorId: string,
+	) {
+		if (input.levelId && !(await this.exists(levels, input.levelId))) {
+			return { error: "Class not found" as const };
+		}
+
+		const [row] = await this.db
+			.update(subjects)
+			.set(input)
+			.where(eq(subjects.id, id))
+			.returning();
+		if (!row) return { error: "Subject not found" as const };
+		await this.audit(actorId, "taxonomy.subject.update", "subject", id, input);
+		await this.dropCaches();
+		return { row };
+	}
+
+	async deleteSubject(id: string, actorId: string) {
+		const used = await this.countRows(questions, eq(questions.subjectId, id));
+		if (used > 0) return { error: inUse("subject", used) };
+
+		const [row] = await this.db
+			.delete(subjects)
+			.where(eq(subjects.id, id))
+			.returning();
+		if (!row) return { error: "Subject not found" as const };
+		await this.audit(actorId, "taxonomy.subject.delete", "subject", id);
+		await this.dropCaches();
+		return { row };
+	}
+
+	async createBook(
+		input: { subjectId: string; nameEn: string; nameBn: string; sort: number },
+		actorId: string,
+	) {
+		if (!(await this.exists(subjects, input.subjectId))) {
+			return { error: "Subject not found" as const };
+		}
+
+		// The seed's ids read "phy1-tapan"; new ones keep that shape.
+		const base = `${input.subjectId}-${slugify(input.nameEn)}`;
+		const id = await this.freeId(books, base);
+		const [row] = await this.db
+			.insert(books)
+			.values({ id, ...input })
+			.returning();
+		await this.audit(actorId, "taxonomy.book.create", "book", id);
+		await this.dropCaches();
+		return { row };
+	}
+
+	async updateBook(
+		id: string,
+		input: { nameEn?: string; nameBn?: string; sort?: number },
+		actorId: string,
+	) {
+		const [row] = await this.db
+			.update(books)
+			.set(input)
+			.where(eq(books.id, id))
+			.returning();
+		if (!row) return { error: "Book not found" as const };
+		await this.audit(actorId, "taxonomy.book.update", "book", id, input);
+		await this.dropCaches();
+		return { row };
+	}
+
+	async deleteBook(id: string, actorId: string) {
+		const used = await this.countRows(questions, eq(questions.bookId, id));
+		if (used > 0) return { error: inUse("book", used) };
+
+		const [row] = await this.db
+			.delete(books)
+			.where(eq(books.id, id))
+			.returning();
+		if (!row) return { error: "Book not found" as const };
+		await this.audit(actorId, "taxonomy.book.delete", "book", id);
+		await this.dropCaches();
+		return { row };
+	}
+
+	/** `number` is the chapter's place in the book; left out, it goes last. */
+	async createChapter(
+		input: { bookId: string; number?: number; nameEn: string; nameBn: string },
+		actorId: string,
+	) {
+		if (!(await this.exists(books, input.bookId))) {
+			return { error: "Book not found" as const };
+		}
+
+		const number = input.number ?? (await this.nextChapterNumber(input.bookId));
+		if (await this.chapterNumberTaken(input.bookId, number)) {
+			return { error: `Chapter ${number} already exists in this book` };
+		}
+
+		const [row] = await this.db
+			.insert(chapters)
+			.values({
+				bookId: input.bookId,
+				number,
+				nameEn: input.nameEn,
+				nameBn: input.nameBn,
+			})
+			.returning();
+		await this.audit(actorId, "taxonomy.chapter.create", "chapter", String(row?.id));
+		await this.dropCaches();
+		return { row };
+	}
+
+	async updateChapter(
+		id: number,
+		input: { number?: number; nameEn?: string; nameBn?: string },
+		actorId: string,
+	) {
+		const [current] = await this.db
+			.select({ bookId: chapters.bookId })
+			.from(chapters)
+			.where(eq(chapters.id, id));
+		if (!current) return { error: "Chapter not found" };
+
+		if (
+			input.number !== undefined &&
+			(await this.chapterNumberTaken(current.bookId, input.number, id))
+		) {
+			return { error: `Chapter ${input.number} already exists in this book` };
+		}
+
+		const [row] = await this.db
+			.update(chapters)
+			.set(input)
+			.where(eq(chapters.id, id))
+			.returning();
+		if (!row) return { error: "Chapter not found" };
+		await this.audit(actorId, "taxonomy.chapter.update", "chapter", String(id), input);
+		await this.dropCaches();
+		return { row };
+	}
+
+	async deleteChapter(id: number, actorId: string) {
+		const used = await this.countRows(questions, eq(questions.chapterId, id));
+		if (used > 0) return { error: inUse("chapter", used) };
+
+		const [row] = await this.db
+			.delete(chapters)
+			.where(eq(chapters.id, id))
+			.returning();
+		if (!row) return { error: "Chapter not found" };
+		await this.audit(actorId, "taxonomy.chapter.delete", "chapter", String(id));
+		await this.dropCaches();
+		return { row };
+	}
+
+	// ---------- shared ----------
+
+	private async countRows(
+		table: typeof subjects | typeof batches | typeof questions,
+		where: SQL,
+	) {
+		const [row] = await this.db.select({ value: count() }).from(table).where(where);
+		return row?.value ?? 0;
+	}
+
+	private async exists(
+		table: typeof levels | typeof subjects | typeof books,
+		id: string,
+	) {
+		const [row] = await this.db
+			.select({ id: table.id })
+			.from(table)
+			.where(eq(table.id, id));
+		return Boolean(row);
+	}
+
+	private async nextChapterNumber(bookId: string) {
+		const [row] = await this.db
+			.select({ value: max(chapters.number) })
+			.from(chapters)
+			.where(eq(chapters.bookId, bookId));
+		return (row?.value ?? 0) + 1;
+	}
+
+	private async chapterNumberTaken(
+		bookId: string,
+		number: number,
+		exceptId?: number,
+	) {
+		const [row] = await this.db
+			.select({ id: chapters.id })
+			.from(chapters)
+			.where(
+				and(
+					eq(chapters.bookId, bookId),
+					eq(chapters.number, number),
+					exceptId === undefined ? undefined : ne(chapters.id, exceptId),
+				),
+			);
+		return Boolean(row);
+	}
+
+	/** `physics`, then `physics-2`: ids are generated, so collisions are ours to settle. */
+	private async freeId(
+		table: typeof levels | typeof subjects | typeof books,
+		base: string,
+	) {
+		for (let n = 1; ; n++) {
+			const suffix = n === 1 ? "" : `-${n}`;
+			const id = `${base.slice(0, 32 - suffix.length)}${suffix}`;
+			if (!(await this.exists(table, id))) return id;
+		}
+	}
+
+	/** Staff edit the syllabus rarely and consequentially: keep a trail. */
+	private async audit(
+		actorId: string,
+		action: string,
+		entityType: string,
+		entityId: string,
+		meta?: Record<string, unknown>,
+	) {
+		await this.db
+			.insert(auditLog)
+			.values({ actorId, action, entityType, entityId, meta: meta ?? null });
+	}
+
+	/**
+	 * Every cached tree, not only the level that changed: a subject can move
+	 * between classes, and the "all" tree holds the lot anyway.
+	 */
+	private async dropCaches() {
+		const ids = await this.db.select({ id: levels.id }).from(levels);
+		await invalidate(
+			LEVELS_CACHE_KEY,
+			taxonomyCacheKey(null),
+			...ids.map((level) => taxonomyCacheKey(level.id)),
 		);
 	}
 }
