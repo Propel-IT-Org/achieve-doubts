@@ -18,9 +18,10 @@ export const levels = pgTable("levels", {
 
 export const subjects = pgTable("subjects", {
 	id: varchar("id", { length: 32 }).primaryKey(),
-	levelId: varchar("level_id", { length: 32 })
-		.notNull()
-		.references(() => levels.id, { onDelete: "cascade" }),
+	// Nullable until the existing subjects are put on a level; then NOT NULL.
+	levelId: varchar("level_id", { length: 32 }).references(() => levels.id, {
+		onDelete: "cascade",
+	}),
 	nameEn: text("name_en").notNull(),
 	nameBn: text("name_bn").notNull(),
 	sort: integer("sort").notNull().default(0),

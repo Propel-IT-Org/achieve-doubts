@@ -527,9 +527,8 @@ export class AdminService {
   }
 
   /**
-   * batches.level_id carries no foreign key — the column lives in a table
-   * better-auth generates, and its generator only references models it owns
-   * — so the check belongs here.
+   * The foreign key would refuse an unknown level too, but as a 500; this
+   * turns it into a message staff can act on.
    */
   private async levelExists(levelId: string) {
     const [level] = await this.db

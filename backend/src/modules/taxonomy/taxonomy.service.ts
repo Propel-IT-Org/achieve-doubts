@@ -154,9 +154,9 @@ export class TaxonomyService {
 	}
 
 	/**
-	 * Only an empty class nobody is enrolled in. Its subjects would cascade
-	 * away with it, and its batches would point at nothing — batches.level_id
-	 * has no foreign key to stop that, so this does.
+	 * Only an empty class nobody is enrolled in. Both foreign keys cascade:
+	 * deleting a class would take its subjects with it, and its batches —
+	 * signing those students out for good. So this refuses instead.
 	 */
 	async deleteLevel(id: string, actorId: string) {
 		const subjectCount = await this.countRows(subjects, eq(subjects.levelId, id));

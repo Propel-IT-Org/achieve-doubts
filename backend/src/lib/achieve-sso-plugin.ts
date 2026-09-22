@@ -106,10 +106,10 @@ export function achieveSsoPlugin(): BetterAuthPlugin {
           active: { type: "boolean", required: true },
           // The class this cohort studies (levels.id). Its students see
           // that level's taxonomy and no other; null until staff pick one.
-          // No `references`: the generator only resolves models better-auth
-          // owns, and `levels` is ours (db/schema/taxonomy.ts). The admin
-          // service checks the level exists, and the taxonomy seed refuses
-          // to drop a level a batch still points at.
+          // No `references` here: the generator only resolves models
+          // better-auth owns, and `levels` is ours (db/schema/taxonomy.ts).
+          // The foreign key is added by hand in db/schema/auth.ts, so a
+          // re-run of `auth:generate` drops it — put it back afterwards.
           levelId: { type: "string", required: false },
           createdAt: {
             type: "date",

@@ -398,9 +398,9 @@ export async function seedTaxonomy(db: DB, { prune = false } = {}) {
 		await adoptLegacyQuestions(db, bookIds);
 		if (!prune) return;
 
-		// batches.level_id has no foreign key (it lives in a better-auth
-		// generated table), so dropping a level out from under a batch is
-		// the one thing this seed has to check for itself.
+		// batches.level_id cascades on delete, so dropping a level a batch
+		// is on would delete the batch — and sign its students out for
+		// good. Refuse instead.
 		const stranded = await db
 			.select({ id: batches.id, levelId: batches.levelId })
 			.from(batches)
