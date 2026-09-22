@@ -75,6 +75,34 @@ export function useSetSolverAdmin() {
   );
 }
 
+export function useCreateBatch() {
+  return useSWRMutation(
+    ["batches", "create"],
+    async (_key, { arg }: { arg: { id: string; label: string } }) => {
+      const res = await api.api.admin.batches.$post({ json: arg });
+      const out = await unwrap<{ id: string }>(res);
+      await revalidate("batches");
+      return out;
+    },
+  );
+}
+
+/** Deactivating a batch also signs out and blocks its students. */
+export function useSetBatchActive() {
+  return useSWRMutation(
+    ["batches", "active"],
+    async (_key, { arg }: { arg: { id: string; active: boolean } }) => {
+      const res = await api.api.admin.batches[":id"].active.$post({
+        param: { id: arg.id },
+        json: { active: arg.active },
+      });
+      const out = await unwrap<{ affectedStudents: number }>(res);
+      await revalidate("batches", "students", "student");
+      return out;
+    },
+  );
+}
+
 export type CreateSolverBody = {
   name: string;
   email: string;

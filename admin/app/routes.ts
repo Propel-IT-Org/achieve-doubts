@@ -8,6 +8,7 @@ export default [
     route("students", "routes/students.tsx"),
     route("solvers", "routes/solvers.tsx"),
     route("solvers/new", "routes/solvers.new.tsx"),
+    route("batches", "routes/batches.tsx"),
     route("analytics", "routes/analytics.tsx"),
     route("invoice", "routes/invoice.tsx"),
   ]),

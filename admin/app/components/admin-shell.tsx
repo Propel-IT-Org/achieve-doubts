@@ -4,6 +4,7 @@ import {
   BarChart3,
   FileSpreadsheet,
   Flag,
+  GraduationCap,
   LogOut,
   UserCheck,
   Users,
@@ -18,6 +19,7 @@ const PAGES: Array<{ to: string; label: string; icon: LucideIcon }> = [
   { to: "/", label: "Reports", icon: Flag },
   { to: "/students", label: "Students", icon: Users },
   { to: "/solvers", label: "Solvers", icon: UserCheck },
+  { to: "/batches", label: "Batches", icon: GraduationCap },
   { to: "/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/invoice", label: "Invoice", icon: FileSpreadsheet },
 ];

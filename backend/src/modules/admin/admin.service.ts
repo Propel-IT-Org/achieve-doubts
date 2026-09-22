@@ -3,6 +3,7 @@ import {
   and,
   desc,
   eq,
+  getTableColumns,
   gte,
   ilike,
   isNotNull,
@@ -374,11 +375,49 @@ export class AdminService {
 
   // ---------- batches ----------
 
+  /** Every batch, with how many students it holds and how many can log in. */
   async listBatches() {
-    return this.db.select().from(batches).orderBy(desc(batches.createdAt));
+    const enrolled = this.db
+      .select({
+        batchId: studentProfiles.batchId,
+        students: sql<number>`count(*)`.as("students"),
+        activeStudents:
+          sql<number>`count(*) filter (where coalesce(${user.banned}, false) = false)`.as(
+            "active_students",
+          ),
+      })
+      .from(studentProfiles)
+      .innerJoin(user, eq(user.id, studentProfiles.userId))
+      .groupBy(studentProfiles.batchId)
+      .as("enrolled");
+
+    const rows = await this.db
+      .select({
+        ...getTableColumns(batches),
+        students: enrolled.students,
+        activeStudents: enrolled.activeStudents,
+      })
+      .from(batches)
+      .leftJoin(enrolled, eq(enrolled.batchId, batches.id))
+      .orderBy(desc(batches.createdAt));
+
+    // The join misses batches nobody is enrolled in, hence the nulls.
+    return rows.map((row) => ({
+      ...row,
+      students: Number(row.students ?? 0),
+      activeStudents: Number(row.activeStudents ?? 0),
+    }));
   }
 
-  async createBatch(id: string, label: string, actorId: string) {
+  /**
+   * `id` must be exactly the `Batch` value Achieve sends in the SSO
+   * handshake — it is compared as-is — so it is only trimmed, never
+   * lower-cased or otherwise rewritten.
+   */
+  async createBatch(rawId: string, rawLabel: string, actorId: string) {
+    const id = rawId.trim();
+    const label = rawLabel.trim();
+
     const [existing] = await this.db
       .select({ id: batches.id })
       .from(batches)

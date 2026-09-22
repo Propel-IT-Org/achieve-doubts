@@ -143,6 +143,27 @@ export function solverCredentials(s: Pick<SolverRow, "institution" | "dept" | "b
     .join(" ");
 }
 
+// ---------- batches ----------
+
+/**
+ * A course cohort. Achieve sends its id with every student sign-in, and a
+ * sign-in for an unknown or inactive batch is refused (UNKNOWN_BATCH).
+ */
+export type BatchRow = {
+  id: string;
+  label: string;
+  active: boolean;
+  createdAt: string;
+  students: number;
+  /** Of those students, how many aren't deactivated. */
+  activeStudents: number;
+};
+
+export const batchesKey = () => ["batches"] as const;
+export const fetchBatches = () =>
+  api.api.admin.batches.$get().then((r) => unwrap<BatchRow[]>(r));
+export const useBatches = () => useSWR(batchesKey(), fetchBatches).data;
+
 // ---------- analytics ----------
 
 export type RangeFilters = {
