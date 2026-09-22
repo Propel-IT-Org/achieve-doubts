@@ -1,9 +1,9 @@
-import { useSolvers, useSubjects } from "~/lib/queries";
+import { useSolvers, useTaxonomyTree } from "~/lib/queries";
 import { useRange } from "./range-picker";
 
 /** Subject and solver selects. Suspends on the taxonomy and solver list. */
 export function AnalyticsFilters() {
-  const subjects = useSubjects();
+  const levels = useTaxonomyTree();
   const solvers = useSolvers();
   const { params, set } = useRange();
 
@@ -17,10 +17,15 @@ export function AnalyticsFilters() {
           onChange={(e) => set({ subject: e.target.value })}
         >
           <option value="">All subjects</option>
-          {subjects.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.nameEn}
-            </option>
+          {/* Grouped by the API: subject names repeat across classes. */}
+          {levels.map((level) => (
+            <optgroup key={level.id} label={level.nameEn}>
+              {level.subjects.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.nameEn}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
       </label>

@@ -13,7 +13,12 @@ import {
   YAxis,
 } from "recharts";
 import { clock, dur, fmt, share } from "~/lib/format";
-import { type Analytics, type RangeFilters, useAnalytics, useSubjects } from "~/lib/queries";
+import {
+  type Analytics,
+  type RangeFilters,
+  useAnalytics,
+  useTaxonomyTree,
+} from "~/lib/queries";
 
 export const CHART = {
   navy: "#14224A",
@@ -87,7 +92,7 @@ export function AnalyticsMetrics({ filters }: { filters: RangeFilters }) {
 
 export function AnalyticsCharts({ filters }: { filters: RangeFilters }) {
   const data = useAnalytics(filters);
-  const subjects = useSubjects();
+  const levels = useTaxonomyTree();
 
   if (data.total === 0) {
     return (
@@ -98,7 +103,15 @@ export function AnalyticsCharts({ filters }: { filters: RangeFilters }) {
   }
 
   const totals = new Map(data.perSubject.map((s) => [s.subjectId, s.total]));
-  const perSubject = subjects.map((s) => ({ name: s.nameEn, value: totals.get(s.id) ?? 0 }));
+  // Two classes can both have a "Physics", so a bar says which one only
+  // when there is more than one class to confuse it with.
+  const manyLevels = levels.length > 1;
+  const perSubject = levels.flatMap((level) =>
+    level.subjects.map((s) => ({
+      name: manyLevels ? `${s.nameEn} · ${level.nameEn}` : s.nameEn,
+      value: totals.get(s.id) ?? 0,
+    })),
+  );
   const { series, weekly } = trendSeries(data.trend, filters.from, filters.to);
   const pie = [
     { name: "Satisfied", value: data.satisfaction.satisfied, color: CHART.blue },

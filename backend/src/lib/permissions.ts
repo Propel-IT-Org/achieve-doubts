@@ -21,6 +21,7 @@ export const statement = {
 	payout: ["list", "generate", "markPaid"],
 	analytics: ["list"],
 	batch: ["create", "list", "update"],
+	taxonomy: ["create", "update", "delete"],
 	solverProfile: ["create", "list", "update"],
 	studentProfile: ["list", "update"],
 	...defaultStatements,
@@ -72,6 +73,8 @@ export const staff = ac.newRole({
 	payout: ["list", "generate", "markPaid"],
 	analytics: ["list"],
 	batch: ["create", "list", "update"],
+	// Reading the tree is public (GET /api/subjects); only staff change it.
+	taxonomy: ["create", "update", "delete"],
 	solverProfile: ["create", "list", "update"],
 	studentProfile: ["list", "update"],
 	...adminAc.statements,

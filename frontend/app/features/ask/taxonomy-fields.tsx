@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { AlertTriangle } from "lucide-react";
 import { useFormContext } from "react-hook-form";
-import { useSubjects } from "~/lib/queries";
+import { useTaxonomyTree } from "~/lib/queries";
 import type { AskForm } from "./ask-schema";
 
 /** Disabled stand-ins with the same layout, while the tree loads. */
@@ -22,7 +22,9 @@ export function TaxonomyFieldsPlaceholder() {
 
 /** Cascading subject → book → chapter selects. Suspends on the taxonomy. */
 export function TaxonomyFields() {
-  const subjects = useSubjects();
+  // A student's tree holds exactly their class, so this is a flatten, not
+  // a filter — the API already decided which subjects they may ask under.
+  const subjects = useTaxonomyTree().flatMap((level) => level.subjects);
   const { register, watch, setValue } = useFormContext<AskForm>();
 
   const subjectId = watch("subjectId");

@@ -187,7 +187,7 @@ export function createApp(customContainer: AppContainer = container) {
       )
       .route("/auth", authRouter)
       .route("/upload", uploadRouter)
-      .route("/subjects", taxonomyRouter)
+      .route("/taxonomy", taxonomyRouter)
       // Four routers share the /questions prefix: the lifecycle itself plus
       // the solution/thread/comment sub-resources hanging off /:id.
       .route("/questions", questionsRouter)

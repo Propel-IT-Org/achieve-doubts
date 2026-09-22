@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { RotateCcw, Search, SlidersHorizontal } from "lucide-react";
-import type { QuestionListFilters, Subject } from "~/lib/queries";
-import { useSubjects } from "~/lib/queries";
+import type { Level, QuestionListFilters } from "~/lib/queries";
+import { useTaxonomyTree } from "~/lib/queries";
 import { STATUS_LABEL } from "~/lib/format";
 import { FeedIndicator } from "./feed-indicator";
 
@@ -130,13 +130,14 @@ export function TaxonomySelectsPlaceholder() {
 
 /** Cascading subject → book → chapter selects. Suspends on the taxonomy. */
 export function TaxonomySelects() {
-  const subjects: Subject[] = useSubjects();
+  const levels: Level[] = useTaxonomyTree();
   const [params, setParam] = useParamSetter();
 
   const subject = params.get("subject") ?? "";
   const book = params.get("book") ?? "";
   const chapter = params.get("chapter") ?? "";
 
+  const subjects = levels.flatMap((l) => l.subjects);
   const books = subjects.find((s) => s.id === subject)?.books ?? [];
   const chapters = books.find((b) => b.id === book)?.chapters ?? [];
 
@@ -150,21 +151,17 @@ export function TaxonomySelects() {
           onChange={(e) => setParam("subject", e.target.value, ["book", "chapter"])}
         >
           <option value="">All subjects</option>
-          {/* Grouped by class, because a solver sees every level and the
-              same subject name can appear under more than one. */}
-          {[...new Map(subjects.map((s) => [s.level.id, s.level])).values()].map(
-            (level) => (
-              <optgroup key={level.id} label={level.nameEn}>
-                {subjects
-                  .filter((s) => s.level.id === level.id)
-                  .map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.nameEn}
-                    </option>
-                  ))}
-              </optgroup>
-            ),
-          )}
+          {/* The API groups by class: a solver sees every class, and the
+              same subject name appears under more than one. */}
+          {levels.map((level) => (
+            <optgroup key={level.id} label={level.nameEn}>
+              {level.subjects.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.nameEn}
+                </option>
+              ))}
+            </optgroup>
+          ))}
         </select>
       </label>
 

@@ -5,7 +5,7 @@ import { PageHeader } from "~/components/admin-shell";
 import { AsyncBoundary } from "~/components/async-boundary";
 import { PanelSkeleton } from "~/components/skeleton";
 import { ReportList } from "~/features/reports/report-list";
-import { fetchReports, fetchSubjects, reportsKey, subjectsKey } from "~/lib/queries";
+import { fetchReports, fetchTaxonomy, reportsKey, taxonomyKey } from "~/lib/queries";
 
 export function meta(_: Route.MetaArgs) {
   return [{ title: "Reports — Achieve Doubts admin" }];
@@ -13,7 +13,7 @@ export function meta(_: Route.MetaArgs) {
 
 export async function clientLoader(_: Route.ClientLoaderArgs) {
   preload(reportsKey(), fetchReports);
-  preload(subjectsKey(), fetchSubjects);
+  preload(taxonomyKey(), fetchTaxonomy);
   return null;
 }
 

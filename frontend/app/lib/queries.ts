@@ -28,28 +28,31 @@ export type Book = {
   nameBn: string;
   chapters: Chapter[];
 };
-/** A class: the top of the taxonomy. A student only ever gets their own. */
+export type Subject = {
+  id: string;
+  levelId: string;
+  nameEn: string;
+  nameBn: string;
+  books: Book[];
+};
+/**
+ * A class, with its subjects nested. The API groups and filters: a student
+ * gets their own class and nothing else, everyone else gets them all.
+ */
 export type Level = {
   id: string;
   nameEn: string;
   nameBn: string;
   sort: number;
-};
-export type Subject = {
-  id: string;
-  levelId: string;
-  level: Level;
-  nameEn: string;
-  nameBn: string;
-  books: Book[];
+  subjects: Subject[];
 };
 
-export const subjectsKey = () => ["subjects"] as const;
-export const fetchSubjects = () =>
-  api.api.subjects.$get().then((r) => unwrap<Subject[]>(r));
+export const taxonomyKey = () => ["taxonomy"] as const;
+export const fetchTaxonomy = () =>
+  api.api.taxonomy.$get().then((r) => unwrap<Level[]>(r));
 
-export const useSubjects = () =>
-  useSWR(subjectsKey(), fetchSubjects).data;
+export const useTaxonomyTree = () =>
+  useSWR(taxonomyKey(), fetchTaxonomy).data;
 
 // ---------- questions ----------
 

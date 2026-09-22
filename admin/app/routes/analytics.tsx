@@ -17,9 +17,9 @@ import {
   analyticsKey,
   fetchAnalytics,
   fetchSolvers,
-  fetchSubjects,
+  fetchTaxonomy,
   solversKey,
-  subjectsKey,
+  taxonomyKey,
 } from "~/lib/queries";
 
 export function meta(_: Route.MetaArgs) {
@@ -34,7 +34,7 @@ export async function clientLoader({ request }: Route.ClientLoaderArgs) {
     subject: params.get("subject") ?? "",
     solver: params.get("solver") ?? "",
   };
-  preload(subjectsKey(), fetchSubjects);
+  preload(taxonomyKey(), fetchTaxonomy);
   preload(solversKey(), fetchSolvers);
   if (filters.from <= filters.to) {
     preload(analyticsKey(filters), () => fetchAnalytics(filters));

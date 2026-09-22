@@ -3,8 +3,12 @@ import type { DB } from "../../db";
 import { batches, levels, studentProfiles } from "../../db/schema";
 import { cached } from "../../lib/cache";
 
-/** The tree only changes when the seed runs, so a few minutes' staleness is harmless. */
+/** Staff edits drop the cache, so this only has to cover the read traffic. */
 const TTL_SECONDS = 300;
+
+const LEVELS_CACHE_KEY = "cache:levels";
+const taxonomyCacheKey = (levelId: string | null) =>
+	`cache:taxonomy:${levelId ?? "all"}`;
 
 export class TaxonomyService {
 	constructor(private readonly db: DB) {}
@@ -27,42 +31,38 @@ export class TaxonomyService {
 
 	/** Every level, in class order. Staff pick from these when editing a batch. */
 	listLevels() {
-		return cached("cache:levels", TTL_SECONDS, () =>
+		return cached(LEVELS_CACHE_KEY, TTL_SECONDS, () =>
 			this.db.select().from(levels).orderBy(asc(levels.sort)),
 		);
 	}
 
 	/**
-	 * subject -> book -> chapter, for one level or for all of them. Each
-	 * subject carries its level, because a solver answers across classes and
-	 * has to see which one a question came from.
+	 * The whole tree, level -> subject -> book -> chapter, for one level or
+	 * for all of them. Nested and ordered here so no client has to group or
+	 * filter it: a student gets exactly their class, everyone else gets the
+	 * lot, and each is one array to render.
 	 */
 	tree(levelId: string | null) {
-		return cached(
-			`cache:taxonomy:${levelId ?? "all"}`,
-			TTL_SECONDS,
-			async () => {
-				const rows = await this.db.query.subjects.findMany({
-					where: levelId ? (s, { eq }) => eq(s.levelId, levelId) : undefined,
-					with: {
-						level: true,
-						books: {
-							orderBy: (b, { asc }) => [asc(b.sort)],
-							with: {
-								chapters: {
-									orderBy: (ch, { asc }) => [asc(ch.number)],
+		return cached(taxonomyCacheKey(levelId), TTL_SECONDS, () =>
+			this.db.query.levels.findMany({
+				where: levelId ? (l, { eq }) => eq(l.id, levelId) : undefined,
+				orderBy: (l, { asc }) => [asc(l.sort)],
+				with: {
+					subjects: {
+						orderBy: (s, { asc }) => [asc(s.sort)],
+						with: {
+							books: {
+								orderBy: (b, { asc }) => [asc(b.sort)],
+								with: {
+									chapters: {
+										orderBy: (ch, { asc }) => [asc(ch.number)],
+									},
 								},
 							},
 						},
 					},
-				});
-
-				// Ordering by the level's sort column needs a join the relational
-				// query can't express, and the list is ~10 rows.
-				return rows.sort(
-					(a, b) => a.level.sort - b.level.sort || a.sort - b.sort,
-				);
-			},
+				},
+			}),
 		);
 	}
 }

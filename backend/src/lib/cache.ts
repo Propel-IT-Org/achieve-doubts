@@ -63,3 +63,21 @@ export async function cached<T>(
   inflight.set(key, promise);
   return promise;
 }
+
+/**
+ * Drops cached keys after a write, so an edit is visible immediately
+ * instead of at the end of its TTL. Best-effort, like the cache itself: a
+ * failed drop only means the old value lives out its TTL.
+ */
+export async function invalidate(...keys: string[]) {
+	if (keys.length === 0) return;
+	for (const key of keys) memory.delete(key);
+
+	const redis = getRedis();
+	if (!redis) return;
+	try {
+		await redis.send("DEL", keys);
+	} catch (err) {
+		console.error("[cache] invalidate failed", err);
+	}
+}

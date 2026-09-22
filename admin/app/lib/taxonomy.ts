@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useSubjects } from "./queries";
+import { useTaxonomyTree } from "./queries";
 
 export type TaxonomyLookup = {
   subjectName: (id: string) => string;
@@ -9,15 +9,17 @@ export type TaxonomyLookup = {
 
 /** Suspends until the taxonomy tree is loaded; returns id → name lookups. */
 export function useTaxonomy(): TaxonomyLookup {
-  const subjects = useSubjects();
+  const levels = useTaxonomyTree();
   return useMemo(() => {
     const names = new Map<string, string>();
     const chapters = new Map<number, string>();
-    for (const subject of subjects) {
-      names.set(`s:${subject.id}`, subject.nameEn);
-      for (const book of subject.books) {
-        names.set(`b:${book.id}`, book.nameEn);
-        for (const chapter of book.chapters) chapters.set(chapter.id, chapter.nameEn);
+    for (const level of levels) {
+      for (const subject of level.subjects) {
+        names.set(`s:${subject.id}`, subject.nameEn);
+        for (const book of subject.books) {
+          names.set(`b:${book.id}`, book.nameEn);
+          for (const chapter of book.chapters) chapters.set(chapter.id, chapter.nameEn);
+        }
       }
     }
     return {
@@ -25,7 +27,7 @@ export function useTaxonomy(): TaxonomyLookup {
       bookName: (id) => names.get(`b:${id}`) ?? id,
       chapterName: (id) => chapters.get(id) ?? "",
     };
-  }, [subjects]);
+  }, [levels]);
 }
 
 /** Where "Open on main site" leads. */

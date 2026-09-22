@@ -7,9 +7,9 @@ import {
   commentsKey,
   fetchComments,
   fetchQuestion,
-  fetchSubjects,
+  fetchTaxonomy,
   questionKey,
-  subjectsKey,
+  taxonomyKey,
 } from "~/lib/queries";
 import { isAdminSolver, isSolver, useSession } from "~/lib/session";
 import { AsyncBoundary } from "~/components/async-boundary";
@@ -32,7 +32,7 @@ export function meta(_: Route.MetaArgs) {
 export async function clientLoader({ params }: Route.ClientLoaderArgs) {
   const id = Number(params.id);
   // All three start now, in parallel; each section shows as its own lands.
-  preload(subjectsKey(), fetchSubjects);
+  preload(taxonomyKey(), fetchTaxonomy);
   preload(questionKey(id), () => fetchQuestion(id));
   preload(commentsKey(id), () => fetchComments(id));
   return null;

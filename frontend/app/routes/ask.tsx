@@ -3,7 +3,7 @@ import { Lock, User } from "lucide-react";
 import { preload } from "swr";
 
 import type { Route } from "./+types/ask";
-import { fetchSubjects, subjectsKey } from "~/lib/queries";
+import { fetchTaxonomy, taxonomyKey } from "~/lib/queries";
 import { useSession } from "~/lib/session";
 import { Gate } from "~/components/primitives";
 import { AskForm } from "~/features/ask/ask-form";
@@ -13,7 +13,7 @@ export function meta(_: Route.MetaArgs) {
 }
 
 export async function clientLoader(_: Route.ClientLoaderArgs) {
-  preload(subjectsKey(), fetchSubjects);
+  preload(taxonomyKey(), fetchTaxonomy);
   return null;
 }
 

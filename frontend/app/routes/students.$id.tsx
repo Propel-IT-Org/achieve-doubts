@@ -5,9 +5,9 @@ import { preload } from "swr";
 import type { Route } from "./+types/students.$id";
 import {
   fetchStudentProfile,
-  fetchSubjects,
+  fetchTaxonomy,
   studentProfileKey,
-  subjectsKey,
+  taxonomyKey,
 } from "~/lib/queries";
 import { AsyncBoundary } from "~/components/async-boundary";
 import { CardsSkeleton, Skeleton } from "~/components/skeleton";
@@ -22,7 +22,7 @@ export function meta(_: Route.MetaArgs) {
 }
 
 export async function clientLoader({ params }: Route.ClientLoaderArgs) {
-  preload(subjectsKey(), fetchSubjects);
+  preload(taxonomyKey(), fetchTaxonomy);
   preload(studentProfileKey(params.id), () => fetchStudentProfile(params.id));
   return null;
 }

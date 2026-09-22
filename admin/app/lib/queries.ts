@@ -10,20 +10,28 @@ import { api, unwrap } from "./api";
 
 // ---------- taxonomy ----------
 
+export type Chapter = { id: number; number: number; nameEn: string; nameBn: string };
+export type Book = { id: string; nameEn: string; nameBn: string; chapters: Chapter[] };
 export type Subject = {
   id: string;
+  levelId: string;
   nameEn: string;
-  books: Array<{
-    id: string;
-    nameEn: string;
-    chapters: Array<{ id: number; number: number; nameEn: string }>;
-  }>;
+  nameBn: string;
+  books: Book[];
+};
+/** A class, with its subjects nested: the API groups, the client renders. */
+export type Level = {
+  id: string;
+  nameEn: string;
+  nameBn: string;
+  sort: number;
+  subjects: Subject[];
 };
 
-export const subjectsKey = () => ["subjects"] as const;
-export const fetchSubjects = () =>
-  api.api.subjects.$get().then((r) => unwrap<Subject[]>(r));
-export const useSubjects = () => useSWR(subjectsKey(), fetchSubjects).data;
+export const taxonomyKey = () => ["taxonomy"] as const;
+export const fetchTaxonomy = () =>
+  api.api.taxonomy.$get().then((r) => unwrap<Level[]>(r));
+export const useTaxonomyTree = () => useSWR(taxonomyKey(), fetchTaxonomy).data;
 
 // ---------- reports ----------
 

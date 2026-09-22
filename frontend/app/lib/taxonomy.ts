@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import type { Subject } from "./queries";
-import { useSubjects } from "./queries";
+import type { Level } from "./queries";
+import { useTaxonomyTree } from "./queries";
 
 export type TaxonomyLookup = {
   /** The class a subject belongs to — what a solver answers at. */
@@ -15,21 +15,23 @@ export type TaxonomyLookup = {
  * Builds the id -> display-name lookups the cards need, from the taxonomy
  * tree the API returns. One lookup per list, not one per row.
  */
-export function buildTaxonomyLookup(subjects: Subject[]): TaxonomyLookup {
+export function buildTaxonomyLookup(levels: Level[]): TaxonomyLookup {
   const levelNames = new Map<string, string>();
   const subjectNames = new Map<string, string>();
   const bookNames = new Map<string, string>();
   const chapterNames = new Map<number, string>();
   const chapterNumbers = new Map<number, number>();
 
-  for (const subject of subjects) {
-    levelNames.set(subject.id, subject.level.nameEn);
-    subjectNames.set(subject.id, subject.nameEn);
-    for (const book of subject.books) {
-      bookNames.set(book.id, book.nameEn);
-      for (const chapter of book.chapters) {
-        chapterNames.set(chapter.id, chapter.nameEn);
-        chapterNumbers.set(chapter.id, chapter.number);
+  for (const level of levels) {
+    for (const subject of level.subjects) {
+      levelNames.set(subject.id, level.nameEn);
+      subjectNames.set(subject.id, subject.nameEn);
+      for (const book of subject.books) {
+        bookNames.set(book.id, book.nameEn);
+        for (const chapter of book.chapters) {
+          chapterNames.set(chapter.id, chapter.nameEn);
+          chapterNumbers.set(chapter.id, chapter.number);
+        }
       }
     }
   }
@@ -45,6 +47,6 @@ export function buildTaxonomyLookup(subjects: Subject[]): TaxonomyLookup {
 
 /** Suspends until the taxonomy tree is loaded. */
 export function useTaxonomy(): TaxonomyLookup {
-  const subjects = useSubjects();
-  return useMemo(() => buildTaxonomyLookup(subjects), [subjects]);
+  const levels = useTaxonomyTree();
+  return useMemo(() => buildTaxonomyLookup(levels), [levels]);
 }

@@ -3,7 +3,7 @@ import { Lock } from "lucide-react";
 import { preload } from "swr";
 
 import type { Route } from "./+types/solver";
-import { dashboardKey, fetchDashboard, fetchSubjects, subjectsKey } from "~/lib/queries";
+import { dashboardKey, fetchDashboard, fetchTaxonomy, taxonomyKey } from "~/lib/queries";
 import { isSolver, useSession } from "~/lib/session";
 import { AsyncBoundary } from "~/components/async-boundary";
 import { Avatar, Gate } from "~/components/primitives";
@@ -20,7 +20,7 @@ export function meta(_: Route.MetaArgs) {
 }
 
 export async function clientLoader(_: Route.ClientLoaderArgs) {
-  preload(subjectsKey(), fetchSubjects);
+  preload(taxonomyKey(), fetchTaxonomy);
   preload(dashboardKey(), fetchDashboard);
   return null;
 }

@@ -5,9 +5,9 @@ import { preload } from "swr";
 import type { Route } from "./+types/solvers.$id";
 import {
   fetchSolverProfile,
-  fetchSubjects,
+  fetchTaxonomy,
   solverProfileKey,
-  subjectsKey,
+  taxonomyKey,
 } from "~/lib/queries";
 import { AsyncBoundary } from "~/components/async-boundary";
 import { CardsSkeleton, Skeleton } from "~/components/skeleton";
@@ -22,7 +22,7 @@ export function meta(_: Route.MetaArgs) {
 }
 
 export async function clientLoader({ params }: Route.ClientLoaderArgs) {
-  preload(subjectsKey(), fetchSubjects);
+  preload(taxonomyKey(), fetchTaxonomy);
   preload(solverProfileKey(params.id), () => fetchSolverProfile(params.id));
   return null;
 }
