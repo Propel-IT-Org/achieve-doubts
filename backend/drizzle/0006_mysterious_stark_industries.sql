@@ -1,1 +1,0 @@
-ALTER TABLE "subjects" ALTER COLUMN "level_id" DROP NOT NULL;

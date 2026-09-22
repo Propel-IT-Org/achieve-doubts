@@ -1,5 +1,5 @@
 {
-  "id": "25ea00c2-fd33-4286-8e66-012c82fd4534",
+  "id": "422918f1-333c-4eba-9934-b2f50d37cbb0",
   "prevId": "455a5ad8-2dfd-490b-b829-a0a9521ab688",
   "version": "7",
   "dialect": "postgresql",
@@ -900,7 +900,7 @@
           "name": "level_id",
           "type": "varchar(32)",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "name_en": {
           "name": "name_en",
