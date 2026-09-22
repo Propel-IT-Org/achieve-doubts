@@ -42,6 +42,12 @@ export function QuestionHeader({ id }: { id: number }) {
     <article className="qhead d-qhead" aria-labelledby="q-title">
       <div className="qc-bar">
         <span className="qc-subj">
+          {/* The class first: it tells the solver what depth to answer at. */}
+          {taxonomy.levelName(question.subjectId) && (
+            <span className="qc-book">
+              {taxonomy.levelName(question.subjectId)} ·{" "}
+            </span>
+          )}
           {taxonomy.subjectName(question.subjectId)}{" "}
           <span className="qc-book">/ {taxonomy.bookName(question.bookId)}</span>
         </span>

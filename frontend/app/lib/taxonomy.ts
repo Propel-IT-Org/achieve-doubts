@@ -3,6 +3,8 @@ import type { Subject } from "./queries";
 import { useSubjects } from "./queries";
 
 export type TaxonomyLookup = {
+  /** The class a subject belongs to — what a solver answers at. */
+  levelName: (subjectId: string) => string;
   subjectName: (id: string) => string;
   bookName: (id: string) => string;
   chapterName: (id: number) => string;
@@ -14,12 +16,14 @@ export type TaxonomyLookup = {
  * tree the API returns. One lookup per list, not one per row.
  */
 export function buildTaxonomyLookup(subjects: Subject[]): TaxonomyLookup {
+  const levelNames = new Map<string, string>();
   const subjectNames = new Map<string, string>();
   const bookNames = new Map<string, string>();
   const chapterNames = new Map<number, string>();
   const chapterNumbers = new Map<number, number>();
 
   for (const subject of subjects) {
+    levelNames.set(subject.id, subject.level.nameEn);
     subjectNames.set(subject.id, subject.nameEn);
     for (const book of subject.books) {
       bookNames.set(book.id, book.nameEn);
@@ -31,6 +35,7 @@ export function buildTaxonomyLookup(subjects: Subject[]): TaxonomyLookup {
   }
 
   return {
+    levelName: (id) => levelNames.get(id) ?? "",
     subjectName: (id) => subjectNames.get(id) ?? id,
     bookName: (id) => bookNames.get(id) ?? id,
     chapterName: (id) => chapterNames.get(id) ?? "",

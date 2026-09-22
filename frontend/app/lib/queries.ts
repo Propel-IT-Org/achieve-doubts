@@ -28,8 +28,17 @@ export type Book = {
   nameBn: string;
   chapters: Chapter[];
 };
+/** A class: the top of the taxonomy. A student only ever gets their own. */
+export type Level = {
+  id: string;
+  nameEn: string;
+  nameBn: string;
+  sort: number;
+};
 export type Subject = {
   id: string;
+  levelId: string;
+  level: Level;
   nameEn: string;
   nameBn: string;
   books: Book[];

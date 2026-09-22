@@ -150,11 +150,21 @@ export function TaxonomySelects() {
           onChange={(e) => setParam("subject", e.target.value, ["book", "chapter"])}
         >
           <option value="">All subjects</option>
-          {subjects.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.nameEn}
-            </option>
-          ))}
+          {/* Grouped by class, because a solver sees every level and the
+              same subject name can appear under more than one. */}
+          {[...new Map(subjects.map((s) => [s.level.id, s.level])).values()].map(
+            (level) => (
+              <optgroup key={level.id} label={level.nameEn}>
+                {subjects
+                  .filter((s) => s.level.id === level.id)
+                  .map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.nameEn}
+                    </option>
+                  ))}
+              </optgroup>
+            ),
+          )}
         </select>
       </label>
 

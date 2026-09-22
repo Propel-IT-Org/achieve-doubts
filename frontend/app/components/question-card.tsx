@@ -8,6 +8,8 @@ import { StatusPill, Trace } from "./primitives";
 export type QuestionCardViewProps = {
   to: string;
   status: string;
+  /** The class, shown before the subject: solvers answer across all of them. */
+  levelName?: string;
   subjectName: string;
   bookName: string;
   chapterNumber: number;
@@ -32,6 +34,9 @@ export function QuestionCardView(props: QuestionCardViewProps) {
     <Link to={props.to} className={`qc${props.compact ? " compact" : ""}`}>
       <div className="qc-bar">
         <span className="qc-subj">
+          {props.levelName && (
+            <span className="qc-book">{props.levelName} · </span>
+          )}
           {props.subjectName}{" "}
           <span className="qc-book">/ {props.bookName}</span>
         </span>
@@ -107,6 +112,7 @@ export function QuestionCard({
     <QuestionCardView
       to={`/questions/${question.id}`}
       status={question.status}
+      levelName={taxonomy.levelName(question.subjectId)}
       subjectName={taxonomy.subjectName(question.subjectId)}
       bookName={taxonomy.bookName(question.bookId)}
       chapterNumber={taxonomy.chapterNumber(question.chapterId)}

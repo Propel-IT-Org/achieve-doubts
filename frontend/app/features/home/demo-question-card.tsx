@@ -75,6 +75,7 @@ export function DemoQuestionCard() {
       <QuestionCardView
         to="/questions"
         status={SEQ[idx]}
+        levelName="Class 11–12 (HSC)"
         subjectName="Physics"
         bookName="Physics 1st paper"
         chapterNumber={4}
