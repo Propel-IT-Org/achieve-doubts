@@ -31,7 +31,11 @@ import {
 import type { Auth } from "../../lib/auth";
 import type { AppRole } from "../../lib/permissions";
 import { containsPattern } from "../interaction/shared";
-import { isLockBlocked, pendingFollowupCondition } from "../profiles/solver-stats.util";
+import {
+  isLockBlocked,
+  pendingFollowupCondition,
+  solverSatisfactionRate,
+} from "../profiles/solver-stats.util";
 import type {
   CreateSolverInput,
   QuotaInput,
@@ -310,7 +314,6 @@ export class AdminService {
         solverId: questions.solverId,
         solved: sql<number>`count(*) filter (where ${questions.status} in ('answered','satisfied','unsatisfied'))`,
         satisfied: sql<number>`count(*) filter (where ${questions.status} = 'satisfied')`,
-        unsatisfied: sql<number>`count(*) filter (where ${questions.status} = 'unsatisfied')`,
         pending: sql<number>`count(*) filter (where ${pendingFollowupCondition()})`,
       })
       .from(questions)
@@ -325,16 +328,12 @@ export class AdminService {
 
     return rows.map((row) => {
       const agg = bySolver.get(row.id);
-      const satisfied = Number(agg?.satisfied ?? 0);
-      const unsatisfied = Number(agg?.unsatisfied ?? 0);
+      const solved = Number(agg?.solved ?? 0);
       return {
         ...row,
         isAdminSolver: row.role === "adminSolver",
-        solved: Number(agg?.solved ?? 0),
-        satisfactionRate:
-          satisfied + unsatisfied > 0
-            ? satisfied / (satisfied + unsatisfied)
-            : null,
+        solved,
+        satisfactionRate: solverSatisfactionRate(Number(agg?.satisfied ?? 0), solved),
         pendingFollowups: Number(agg?.pending ?? 0),
         lockBlocked: isLockBlocked(Number(agg?.pending ?? 0)),
       };

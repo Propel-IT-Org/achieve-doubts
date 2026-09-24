@@ -9,6 +9,18 @@ import { questions, solutions, threadMessages } from "../../db/schema";
  * the same thing everywhere they're computed.
  */
 
+/**
+ * A solver's own satisfaction rate: satisfied answers over every answer
+ * they've given, rated or not. An answer nobody rated counts against it —
+ * otherwise one satisfied rating among fifty unrated answers reads 100%.
+ *
+ * Only for a single solver's record (their profile, their dashboard, the
+ * admin solver list). Site-wide and per-range figures — the home page,
+ * analytics, rankings, the invoice — still use satisfied / rated.
+ */
+export const solverSatisfactionRate = (satisfied: number, solved: number) =>
+  solved > 0 ? satisfied / solved : null;
+
 export interface SolverStats {
   solved: number;
   satisfied: number;
@@ -54,8 +66,7 @@ export async function computeSolverStats(
     solved,
     satisfied,
     unsatisfied,
-    satisfactionRate:
-      satisfied + unsatisfied > 0 ? satisfied / (satisfied + unsatisfied) : null,
+    satisfactionRate: solverSatisfactionRate(satisfied, solved),
     avgResponseMinutes: resp?.avgMinutes ? Number(resp.avgMinutes) : null,
   };
 }
