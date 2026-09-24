@@ -48,17 +48,17 @@ export const profilesRouter = new Hono<AppEnv>()
 
     const [stats] = await db
       .select({
-        asked: sql<number>`count(*)`,
-        answered: sql<number>`count(*) filter (where ${questions.status} in ('answered','satisfied','unsatisfied'))`,
-        satisfied: sql<number>`count(*) filter (where ${questions.status} = 'satisfied')`,
-        unsatisfied: sql<number>`count(*) filter (where ${questions.status} = 'unsatisfied')`,
-        avgMatchSec: sql<string | null>`avg(${questions.matchedAfterSec})`,
+        asked: sql<number>`count(*)::int`,
+        answered: sql<number>`count(*) filter (where ${questions.status} in ('answered','satisfied','unsatisfied'))::int`,
+        satisfied: sql<number>`count(*) filter (where ${questions.status} = 'satisfied')::int`,
+        unsatisfied: sql<number>`count(*) filter (where ${questions.status} = 'unsatisfied')::int`,
+        avgMatchSec: sql<number | null>`avg(${questions.matchedAfterSec})::float8`,
       })
       .from(questions)
       .where(and(eq(questions.askerId, id), isNull(questions.deletedAt)));
 
-    const satisfied = Number(stats?.satisfied ?? 0);
-    const unsatisfied = Number(stats?.unsatisfied ?? 0);
+    const satisfied = stats?.satisfied ?? 0;
+    const unsatisfied = stats?.unsatisfied ?? 0;
 
     const recent = await db
       .select()
@@ -69,13 +69,13 @@ export const profilesRouter = new Hono<AppEnv>()
 
     return c.json({
       ...row,
-      asked: Number(stats?.asked ?? 0),
-      answered: Number(stats?.answered ?? 0),
+      asked: stats?.asked ?? 0,
+      answered: stats?.answered ?? 0,
       satisfactionRate:
         satisfied + unsatisfied > 0
           ? satisfied / (satisfied + unsatisfied)
           : null,
-      avgMatchSeconds: stats?.avgMatchSec ? Number(stats.avgMatchSec) : null,
+      avgMatchSeconds: stats?.avgMatchSec ?? null,
       recentQuestions: recent,
     });
   })
@@ -133,17 +133,17 @@ export const profilesRouter = new Hono<AppEnv>()
 
       const [lockCounts] = await db
         .select({
-          locked: sql<number>`count(*) filter (where ${lockEvents.action} = 'lock')`,
-          unlocked: sql<number>`count(*) filter (where ${lockEvents.action} = 'unlock')`,
+          locked: sql<number>`count(*) filter (where ${lockEvents.action} = 'lock')::int`,
+          unlocked: sql<number>`count(*) filter (where ${lockEvents.action} = 'unlock')::int`,
         })
         .from(lockEvents)
         .where(eq(lockEvents.solverId, solverId));
 
-      const locked = Number(lockCounts?.locked ?? 0);
-      const unlocked = Number(lockCounts?.unlocked ?? 0);
+      const locked = lockCounts?.locked ?? 0;
+      const unlocked = lockCounts?.unlocked ?? 0;
 
       const [openRow] = await db
-        .select({ n: sql<number>`count(*)` })
+        .select({ n: sql<number>`count(*)::int` })
         .from(questions)
         .where(
           and(eq(questions.status, "waiting"), isNull(questions.deletedAt)),
@@ -181,7 +181,7 @@ export const profilesRouter = new Hono<AppEnv>()
         locked,
         unlocked,
         unlockRate: locked > 0 ? unlocked / locked : null,
-        openQuestions: Number(openRow?.n ?? 0),
+        openQuestions: openRow?.n ?? 0,
         lockedByMe: myLocked,
         pendingFollowups: pending,
         // The rule lives here, so the dashboard never re-derives it.
@@ -207,11 +207,11 @@ const HOME_STATS_TTL = 60;
 async function computeHomeStats(db: DB) {
   const [agg] = await db
     .select({
-      solved: sql<number>`count(*) filter (where ${questions.status} in ('answered','satisfied','unsatisfied'))`,
-      satisfied: sql<number>`count(*) filter (where ${questions.status} = 'satisfied')`,
-      unsatisfied: sql<number>`count(*) filter (where ${questions.status} = 'unsatisfied')`,
+      solved: sql<number>`count(*) filter (where ${questions.status} in ('answered','satisfied','unsatisfied'))::int`,
+      satisfied: sql<number>`count(*) filter (where ${questions.status} = 'satisfied')::int`,
+      unsatisfied: sql<number>`count(*) filter (where ${questions.status} = 'unsatisfied')::int`,
       medianMatchSec: sql<
-        string | null
+        number | null
       >`percentile_cont(0.5) within group (order by ${questions.matchedAfterSec}) filter (where ${questions.matchedAfterSec} is not null)`,
     })
     .from(questions)
@@ -220,7 +220,7 @@ async function computeHomeStats(db: DB) {
   const [answerTime] = await db
     .select({
       medianAnswerMin: sql<
-        string | null
+        number | null
       >`percentile_cont(0.5) within group (order by extract(epoch from (${solutions.createdAt} - ${questions.lockedAt})) / 60)`,
     })
     .from(solutions)
@@ -232,7 +232,7 @@ async function computeHomeStats(db: DB) {
   // No presence tracking exists in this system — this is a stand-in for
   // "solvers online", not a live count.
   const [solverCount] = await db
-    .select({ n: sql<number>`count(*)` })
+    .select({ n: sql<number>`count(*)::int` })
     .from(user)
     .where(
       and(
@@ -241,21 +241,17 @@ async function computeHomeStats(db: DB) {
       ),
     );
 
-  const satisfied = Number(agg?.satisfied ?? 0);
-  const unsatisfied = Number(agg?.unsatisfied ?? 0);
+  const satisfied = agg?.satisfied ?? 0;
+  const unsatisfied = agg?.unsatisfied ?? 0;
 
   return {
-    solved: Number(agg?.solved ?? 0),
+    solved: agg?.solved ?? 0,
     satisfactionRate:
       satisfied + unsatisfied > 0
         ? satisfied / (satisfied + unsatisfied)
         : null,
-    medianMatchSeconds: agg?.medianMatchSec
-      ? Number(agg.medianMatchSec)
-      : null,
-    medianAnswerMinutes: answerTime?.medianAnswerMin
-      ? Number(answerTime.medianAnswerMin)
-      : null,
-    solversAvailable: Number(solverCount?.n ?? 0),
+    medianMatchSeconds: agg?.medianMatchSec ?? null,
+    medianAnswerMinutes: answerTime?.medianAnswerMin ?? null,
+    solversAvailable: solverCount?.n ?? 0,
   };
 }

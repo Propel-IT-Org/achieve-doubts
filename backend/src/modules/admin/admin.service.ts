@@ -110,13 +110,13 @@ export class AdminService {
     const asked = this.db
       .select({
         askerId: questions.askerId,
-        asked: sql<number>`count(*)`.as("asked"),
+        asked: sql<number>`count(*)::int`.as("asked"),
         satisfied:
-          sql<number>`count(*) filter (where ${questions.status} = 'satisfied')`.as(
+          sql<number>`count(*) filter (where ${questions.status} = 'satisfied')::int`.as(
             "satisfied",
           ),
         unsatisfied:
-          sql<number>`count(*) filter (where ${questions.status} = 'unsatisfied')`.as(
+          sql<number>`count(*) filter (where ${questions.status} = 'unsatisfied')::int`.as(
             "unsatisfied",
           ),
       })
@@ -172,8 +172,8 @@ export class AdminService {
         .offset(offset),
       this.db
         .select({
-          total: sql<number>`count(*)`,
-          active: sql<number>`count(*) filter (where coalesce(${user.banned}, false) = false)`,
+          total: sql<number>`count(*)::int`,
+          active: sql<number>`count(*) filter (where coalesce(${user.banned}, false) = false)::int`,
         })
         .from(user)
         .leftJoin(studentProfiles, eq(studentProfiles.userId, user.id))
@@ -183,12 +183,12 @@ export class AdminService {
     return {
       students: rows.map((row) => ({
         ...row,
-        asked: Number(row.asked),
-        satisfied: Number(row.satisfied),
-        unsatisfied: Number(row.unsatisfied),
+        asked: row.asked,
+        satisfied: row.satisfied,
+        unsatisfied: row.unsatisfied,
       })),
-      total: Number(totals?.total ?? 0),
-      active: Number(totals?.active ?? 0),
+      total: totals?.total ?? 0,
+      active: totals?.active ?? 0,
     };
   }
 
@@ -215,9 +215,9 @@ export class AdminService {
 
     const [stats] = await this.db
       .select({
-        asked: sql<number>`count(*)`,
-        satisfied: sql<number>`count(*) filter (where ${questions.status} = 'satisfied')`,
-        unsatisfied: sql<number>`count(*) filter (where ${questions.status} = 'unsatisfied')`,
+        asked: sql<number>`count(*)::int`,
+        satisfied: sql<number>`count(*) filter (where ${questions.status} = 'satisfied')::int`,
+        unsatisfied: sql<number>`count(*) filter (where ${questions.status} = 'unsatisfied')::int`,
       })
       .from(questions)
       .where(and(eq(questions.askerId, id), isNull(questions.deletedAt)));
@@ -227,11 +227,10 @@ export class AdminService {
       // A whole table nullifies itself when a left join misses; an object
       // built column by column comes back with every field null instead.
       batch: row.batch.id ? row.batch : null,
-      // count() comes back as a string over the wire, and "2" + "1" is "21".
       stats: {
-        asked: Number(stats?.asked ?? 0),
-        satisfied: Number(stats?.satisfied ?? 0),
-        unsatisfied: Number(stats?.unsatisfied ?? 0),
+        asked: stats?.asked ?? 0,
+        satisfied: stats?.satisfied ?? 0,
+        unsatisfied: stats?.unsatisfied ?? 0,
       },
     };
   }
@@ -312,9 +311,9 @@ export class AdminService {
     const aggregates = await this.db
       .select({
         solverId: questions.solverId,
-        solved: sql<number>`count(*) filter (where ${questions.status} in ('answered','satisfied','unsatisfied'))`,
-        satisfied: sql<number>`count(*) filter (where ${questions.status} = 'satisfied')`,
-        pending: sql<number>`count(*) filter (where ${pendingFollowupCondition()})`,
+        solved: sql<number>`count(*) filter (where ${questions.status} in ('answered','satisfied','unsatisfied'))::int`,
+        satisfied: sql<number>`count(*) filter (where ${questions.status} = 'satisfied')::int`,
+        pending: sql<number>`count(*) filter (where ${pendingFollowupCondition()})::int`,
       })
       .from(questions)
       .where(
@@ -328,14 +327,14 @@ export class AdminService {
 
     return rows.map((row) => {
       const agg = bySolver.get(row.id);
-      const solved = Number(agg?.solved ?? 0);
+      const solved = agg?.solved ?? 0;
       return {
         ...row,
         isAdminSolver: row.role === "adminSolver",
         solved,
-        satisfactionRate: solverSatisfactionRate(Number(agg?.satisfied ?? 0), solved),
-        pendingFollowups: Number(agg?.pending ?? 0),
-        lockBlocked: isLockBlocked(Number(agg?.pending ?? 0)),
+        satisfactionRate: solverSatisfactionRate(agg?.satisfied ?? 0, solved),
+        pendingFollowups: agg?.pending ?? 0,
+        lockBlocked: isLockBlocked(agg?.pending ?? 0),
       };
     });
   }
@@ -430,9 +429,9 @@ export class AdminService {
     const enrolled = this.db
       .select({
         batchId: studentProfiles.batchId,
-        students: sql<number>`count(*)`.as("students"),
+        students: sql<number>`count(*)::int`.as("students"),
         activeStudents:
-          sql<number>`count(*) filter (where coalesce(${user.banned}, false) = false)`.as(
+          sql<number>`count(*) filter (where coalesce(${user.banned}, false) = false)::int`.as(
             "active_students",
           ),
       })
@@ -456,8 +455,8 @@ export class AdminService {
     // The join misses batches nobody is enrolled in, hence the nulls.
     return rows.map((row) => ({
       ...row,
-      students: Number(row.students ?? 0),
-      activeStudents: Number(row.activeStudents ?? 0),
+      students: row.students ?? 0,
+      activeStudents: row.activeStudents ?? 0,
     }));
   }
 
@@ -673,7 +672,7 @@ export class AdminService {
     const perSubject = await this.db
       .select({
         subjectId: questions.subjectId,
-        total: sql<number>`count(*)`,
+        total: sql<number>`count(*)::int`,
       })
       .from(questions)
       .where(and(...filters))
@@ -681,11 +680,11 @@ export class AdminService {
 
     const [totals] = await this.db
       .select({
-        total: sql<number>`count(*)`,
-        satisfied: sql<number>`count(*) filter (where ${questions.status} = 'satisfied')`,
-        unsatisfied: sql<number>`count(*) filter (where ${questions.status} = 'unsatisfied')`,
-        unrated: sql<number>`count(*) filter (where ${questions.status} = 'answered')`,
-        avgMatchSec: sql<string | null>`avg(${questions.matchedAfterSec})`,
+        total: sql<number>`count(*)::int`,
+        satisfied: sql<number>`count(*) filter (where ${questions.status} = 'satisfied')::int`,
+        unsatisfied: sql<number>`count(*) filter (where ${questions.status} = 'unsatisfied')::int`,
+        unrated: sql<number>`count(*) filter (where ${questions.status} = 'answered')::int`,
+        avgMatchSec: sql<number | null>`avg(${questions.matchedAfterSec})::float8`,
       })
       .from(questions)
       .where(and(...filters));
@@ -693,7 +692,7 @@ export class AdminService {
     const trend = await this.db
       .select({
         day: sql<string>`date_trunc('day', ${questions.answeredAt})::date`,
-        total: sql<number>`count(*)`,
+        total: sql<number>`count(*)::int`,
       })
       .from(questions)
       .where(and(...filters))
@@ -703,8 +702,8 @@ export class AdminService {
     const [resp] = await this.db
       .select({
         avgMinutes: sql<
-          string | null
-        >`avg(extract(epoch from (${solutions.createdAt} - ${questions.lockedAt})) / 60)`,
+          number | null
+        >`avg(extract(epoch from (${solutions.createdAt} - ${questions.lockedAt})) / 60)::float8`,
       })
       .from(solutions)
       .innerJoin(questions, eq(solutions.questionId, questions.id))
@@ -713,17 +712,17 @@ export class AdminService {
     return {
       perSubject: perSubject.map((r) => ({
         subjectId: r.subjectId,
-        total: Number(r.total),
+        total: r.total,
       })),
       satisfaction: {
-        satisfied: Number(totals?.satisfied ?? 0),
-        unsatisfied: Number(totals?.unsatisfied ?? 0),
-        unrated: Number(totals?.unrated ?? 0),
+        satisfied: totals?.satisfied ?? 0,
+        unsatisfied: totals?.unsatisfied ?? 0,
+        unrated: totals?.unrated ?? 0,
       },
-      total: Number(totals?.total ?? 0),
-      avgMatchSeconds: totals?.avgMatchSec ? Number(totals.avgMatchSec) : null,
-      avgResponseMinutes: resp?.avgMinutes ? Number(resp.avgMinutes) : null,
-      trend: trend.map((r) => ({ day: r.day, total: Number(r.total) })),
+      total: totals?.total ?? 0,
+      avgMatchSeconds: totals?.avgMatchSec ?? null,
+      avgResponseMinutes: resp?.avgMinutes ?? null,
+      trend: trend.map((r) => ({ day: r.day, total: r.total })),
     };
   }
 
@@ -735,12 +734,12 @@ export class AdminService {
         solverId: questions.solverId,
         name: user.name,
         banned: user.banned,
-        answered: sql<number>`count(*)`,
-        satisfied: sql<number>`count(*) filter (where ${questions.status} = 'satisfied')`,
-        unsatisfied: sql<number>`count(*) filter (where ${questions.status} = 'unsatisfied')`,
+        answered: sql<number>`count(*)::int`,
+        satisfied: sql<number>`count(*) filter (where ${questions.status} = 'satisfied')::int`,
+        unsatisfied: sql<number>`count(*) filter (where ${questions.status} = 'unsatisfied')::int`,
         avgRespMin: sql<
-          string | null
-        >`avg(extract(epoch from (${solutions.createdAt} - ${questions.lockedAt})) / 60)`,
+          number | null
+        >`avg(extract(epoch from (${solutions.createdAt} - ${questions.lockedAt})) / 60)::float8`,
       })
       .from(questions)
       .innerJoin(user, eq(user.id, questions.solverId))
@@ -749,20 +748,20 @@ export class AdminService {
       .groupBy(questions.solverId, user.name, user.banned);
 
     const shaped = rows.map((r) => {
-      const satisfied = Number(r.satisfied);
-      const unsatisfied = Number(r.unsatisfied);
+      const satisfied = r.satisfied;
+      const unsatisfied = r.unsatisfied;
       return {
         solverId: r.solverId,
         name: r.name,
         active: r.banned !== true,
-        answered: Number(r.answered),
+        answered: r.answered,
         satisfied,
         unsatisfied,
         satisfactionRate:
           satisfied + unsatisfied > 0
             ? satisfied / (satisfied + unsatisfied)
             : null,
-        avgResponseMinutes: r.avgRespMin ? Number(r.avgRespMin) : null,
+        avgResponseMinutes: r.avgRespMin ?? null,
       };
     });
 
@@ -799,13 +798,13 @@ export class AdminService {
       .select({
         solverId: questions.solverId,
         name: user.name,
-        answered: sql<number>`count(*)`,
-        satisfied: sql<number>`count(*) filter (where ${questions.status} = 'satisfied')`,
-        unsatisfied: sql<number>`count(*) filter (where ${questions.status} = 'unsatisfied')`,
-        unrated: sql<number>`count(*) filter (where ${questions.status} = 'answered')`,
+        answered: sql<number>`count(*)::int`,
+        satisfied: sql<number>`count(*) filter (where ${questions.status} = 'satisfied')::int`,
+        unsatisfied: sql<number>`count(*) filter (where ${questions.status} = 'unsatisfied')::int`,
+        unrated: sql<number>`count(*) filter (where ${questions.status} = 'answered')::int`,
         avgRespMin: sql<
-          string | null
-        >`avg(extract(epoch from (${solutions.createdAt} - ${questions.lockedAt})) / 60)`,
+          number | null
+        >`avg(extract(epoch from (${solutions.createdAt} - ${questions.lockedAt})) / 60)::float8`,
       })
       .from(questions)
       .innerJoin(user, eq(user.id, questions.solverId))
@@ -823,11 +822,11 @@ export class AdminService {
     return rows.map((r) => ({
       solverId: r.solverId,
       name: r.name,
-      answered: Number(r.answered),
-      satisfied: Number(r.satisfied),
-      unsatisfied: Number(r.unsatisfied),
-      unrated: Number(r.unrated),
-      avgRespMin: r.avgRespMin ? Number(r.avgRespMin) : null,
+      answered: r.answered,
+      satisfied: r.satisfied,
+      unsatisfied: r.unsatisfied,
+      unrated: r.unrated,
+      avgRespMin: r.avgRespMin ?? null,
     }));
   }
 
