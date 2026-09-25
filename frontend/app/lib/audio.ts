@@ -23,7 +23,7 @@ export type VoiceNote = { file: File; seconds: number };
 
 /**
  * Starts recording from the microphone. Recording stops by itself at the
- * length limit; call `stop()` to finish and get the note for `uploadFile()`.
+ * length limit; call `stop()` to finish and get the note for `uploadVoiceNote()`.
  */
 export async function startVoiceNote() {
   if (!canRecordVoiceNotes()) {

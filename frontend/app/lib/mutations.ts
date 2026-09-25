@@ -269,16 +269,27 @@ export function useMarkAllNotificationsRead() {
 
 // ---------- uploads ----------
 
-/**
- * Uploads a file straight to object storage and returns its public URL.
- * Images are compressed first (lib/image.ts); the file never passes through
- * the API.
- */
-export async function uploadFile(file: File): Promise<string> {
-  const body = file.type.startsWith("image/") ? await compressImage(file) : file;
+/** A cropped picture: compressed to WebP here, then uploaded. */
+export async function uploadImage(image: HTMLCanvasElement): Promise<string> {
+  return putToStorage(await compressImage(image), "image/webp");
+}
 
+/** A recorded voice note (lib/audio.ts), already WebM. */
+export function uploadVoiceNote(file: File): Promise<string> {
+  return putToStorage(file, "audio/webm");
+}
+
+/**
+ * Uploads straight to object storage and returns the public URL; the file
+ * never passes through the API. The content type is one the API presigns
+ * (UPLOAD_TYPES in the backend's upload.util.ts).
+ */
+async function putToStorage(
+  body: Blob,
+  contentType: "image/webp" | "audio/webm",
+): Promise<string> {
   const res = await api.api.upload.presign.$post({
-    json: { contentType: body.type as never, size: body.size },
+    json: { contentType, size: body.size },
   });
   const { uploadUrl, publicUrl, headers } = await unwrap<{
     uploadUrl: string;

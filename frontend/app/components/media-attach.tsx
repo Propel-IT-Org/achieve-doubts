@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { ImageIcon, Mic, Plus, Square, X } from "lucide-react";
 import { canRecordVoiceNotes, startVoiceNote } from "~/lib/audio";
 import { clock } from "~/lib/format";
-import { uploadFile } from "~/lib/mutations";
+import { uploadImage, uploadVoiceNote } from "~/lib/mutations";
+import { useImageCropper } from "./image-crop";
 
 type Recorder = Awaited<ReturnType<typeof startVoiceNote>>;
 
@@ -15,8 +16,11 @@ export type MediaPayload = {
 
 /**
  * The image and voice note a composer is about to send. Both upload
- * straight to storage as soon as they're added (images compressed first,
- * lib/image.ts), so sending the message only posts their URLs.
+ * straight to storage as soon as they're added — an image once it has been
+ * cropped (components/image-crop.tsx) and compressed (lib/image.ts) — so
+ * sending the message only posts their URLs.
+ *
+ * The composer renders `cropDialog`; AttachGrid and AttachRow do it for you.
  */
 export function useMediaAttachments(onError: (message: string) => void) {
   const [image, setImage] = useState<string | null>(null);
@@ -24,6 +28,7 @@ export function useMediaAttachments(onError: (message: string) => void) {
   const [uploading, setUploading] = useState<"image" | "audio" | null>(null);
   const [recordingSince, setRecordingSince] = useState<number | null>(null);
   const recorder = useRef<Recorder | null>(null);
+  const cropper = useImageCropper();
 
   // A composer unmounted mid-recording must release the microphone.
   useEffect(() => () => void recorder.current?.cancel(), []);
@@ -32,9 +37,18 @@ export function useMediaAttachments(onError: (message: string) => void) {
     onError(err instanceof Error ? err.message : fallback);
 
   const addImage = async (file: File) => {
+    let cropped: HTMLCanvasElement | null;
+    try {
+      cropped = await cropper.crop(file);
+    } catch (err) {
+      fail(err, "That file couldn't be opened as an image.");
+      return;
+    }
+    if (!cropped) return;
+
     setUploading("image");
     try {
-      setImage(await uploadFile(file));
+      setImage(await uploadImage(cropped));
     } catch (err) {
       fail(err, "The image couldn't be uploaded.");
     } finally {
@@ -63,7 +77,7 @@ export function useMediaAttachments(onError: (message: string) => void) {
     setUploading("audio");
     try {
       const note = await current.stop();
-      setAudio({ url: await uploadFile(note.file), seconds: note.seconds });
+      setAudio({ url: await uploadVoiceNote(note.file), seconds: note.seconds });
     } catch (err) {
       fail(err, "The voice note couldn't be uploaded.");
     } finally {
@@ -89,8 +103,9 @@ export function useMediaAttachments(onError: (message: string) => void) {
     audio,
     uploading,
     recordingSince,
-    /** Still uploading or recording: sending now would drop the attachment. */
-    busy: uploading !== null || recordingSince !== null,
+    /** Still cropping, uploading or recording: sending now would drop it. */
+    busy: cropper.cropping || uploading !== null || recordingSince !== null,
+    cropDialog: cropper.dialog,
     hasMedia: Boolean(image || audio),
     addImage,
     removeImage: () => setImage(null),
@@ -162,6 +177,7 @@ export function AttachGrid({ media }: { media: MediaAttachments }) {
 
   return (
     <div className="att-grid">
+      {media.cropDialog}
       <div className="att">
         <span className="att-lbl">
           <ImageIcon size={16} aria-hidden="true" />
@@ -233,6 +249,7 @@ export function AttachRow({ media }: { media: MediaAttachments }) {
 
   return (
     <div className="att-row">
+      {media.cropDialog}
       {media.image ? (
         <span className="attach-chip">
           <ImageIcon size={14} aria-hidden="true" />
