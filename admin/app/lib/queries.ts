@@ -245,7 +245,8 @@ function rangeQuery(f: RangeFilters) {
 }
 
 export type Analytics = {
-  perSubject: Array<{ subjectId: string; total: number }>;
+  /** Subjects with answers in the range, busiest first. */
+  perSubject: Array<{ subjectId: string; subject: string; level: string | null; total: number }>;
   satisfaction: { satisfied: number; unsatisfied: number; unrated: number };
   total: number;
   avgMatchSeconds: number | null;

@@ -13,12 +13,7 @@ import {
   YAxis,
 } from "recharts";
 import { clock, dur, fmt, share } from "~/lib/format";
-import {
-  type Analytics,
-  type RangeFilters,
-  useAnalytics,
-  useTaxonomyTree,
-} from "~/lib/queries";
+import { type Analytics, type RangeFilters, useAnalytics } from "~/lib/queries";
 
 export const CHART = {
   navy: "#14224A",
@@ -30,6 +25,14 @@ export const CHART = {
 };
 
 const tick = { fontSize: 12, fill: "#4A5878" };
+
+/** Subject names are long; the axis gets this much and truncates past it. */
+const SUBJECT_AXIS_WIDTH = 190;
+const SUBJECT_LABEL_CHARS = 28;
+const truncate = (text: string) =>
+  text.length > SUBJECT_LABEL_CHARS ? `${text.slice(0, SUBJECT_LABEL_CHARS - 1)}…` : text;
+/** One bar per subject, so the chart grows with the list instead of squeezing it. */
+const BAR_ROW_PX = 36;
 const tipStyle = { borderRadius: 10, border: "1px solid #C6D2E4", fontSize: 13 };
 
 const reduceMotion = () =>
@@ -92,7 +95,6 @@ export function AnalyticsMetrics({ filters }: { filters: RangeFilters }) {
 
 export function AnalyticsCharts({ filters }: { filters: RangeFilters }) {
   const data = useAnalytics(filters);
-  const levels = useTaxonomyTree();
 
   if (data.total === 0) {
     return (
@@ -102,16 +104,15 @@ export function AnalyticsCharts({ filters }: { filters: RangeFilters }) {
     );
   }
 
-  const totals = new Map(data.perSubject.map((s) => [s.subjectId, s.total]));
-  // Two classes can both have a "Physics", so a bar says which one only
-  // when there is more than one class to confuse it with.
-  const manyLevels = levels.filter((level) => level.subjects.length > 0).length > 1;
-  const perSubject = levels.flatMap((level) =>
-    level.subjects.map((s) => ({
-      name: manyLevels ? `${s.nameEn} · ${level.nameEn}` : s.nameEn,
-      value: totals.get(s.id) ?? 0,
-    })),
-  );
+  // The API sends only subjects with answers, busiest first. Two classes
+  // can both have a "Physics", so a label names the class only when the
+  // range spans more than one.
+  const manyLevels = new Set(data.perSubject.map((s) => s.level)).size > 1;
+  const perSubject = data.perSubject.map((s) => ({
+    name: manyLevels && s.level ? `${s.subject} · ${s.level}` : s.subject,
+    full: s.level ? `${s.subject} · ${s.level}` : s.subject,
+    value: s.total,
+  }));
   const { series, weekly } = trendSeries(data.trend, filters.from, filters.to);
   const pie = [
     { name: "Satisfied", value: data.satisfaction.satisfied, color: CHART.blue },
@@ -124,18 +125,47 @@ export function AnalyticsCharts({ filters }: { filters: RangeFilters }) {
     <div className="charts">
       <div className="chart">
         <h3>Questions per subject</h3>
-        <div style={{ height: 260 }}>
+        {/* Horizontal: subject names are long, and a vertical chart had to
+            print them all side by side under the bars. */}
+        <div style={{ height: Math.max(160, perSubject.length * BAR_ROW_PX + 32) }}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={perSubject} margin={{ top: 4, right: 8, left: -12, bottom: 0 }}>
-              <CartesianGrid stroke={CHART.grid} vertical={false} />
-              <XAxis dataKey="name" tick={tick} tickLine={false} axisLine={{ stroke: CHART.grid }} interval={0} />
-              <YAxis tick={tick} tickLine={false} axisLine={false} allowDecimals={false} tickFormatter={(v) => fmt(v)} />
+            <BarChart
+              data={perSubject}
+              layout="vertical"
+              margin={{ top: 4, right: 16, left: 0, bottom: 0 }}
+            >
+              <CartesianGrid stroke={CHART.grid} horizontal={false} />
+              <XAxis
+                type="number"
+                tick={tick}
+                tickLine={false}
+                axisLine={{ stroke: CHART.grid }}
+                allowDecimals={false}
+                tickFormatter={(v) => fmt(v)}
+              />
+              <YAxis
+                type="category"
+                dataKey="name"
+                width={SUBJECT_AXIS_WIDTH}
+                tick={tick}
+                tickLine={false}
+                axisLine={false}
+                interval={0}
+                tickFormatter={truncate}
+              />
               <Tooltip
                 cursor={{ fill: "#EEF3FA" }}
                 contentStyle={tipStyle}
+                labelFormatter={(_, payload) => payload?.[0]?.payload?.full ?? ""}
                 formatter={(v) => [fmt(Number(v)), "Questions answered"]}
               />
-              <Bar dataKey="value" fill={CHART.navy} radius={[6, 6, 0, 0]} maxBarSize={56} isAnimationActive={animate} />
+              <Bar
+                dataKey="value"
+                fill={CHART.navy}
+                radius={[0, 6, 6, 0]}
+                maxBarSize={24}
+                isAnimationActive={animate}
+              />
             </BarChart>
           </ResponsiveContainer>
         </div>

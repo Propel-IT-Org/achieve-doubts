@@ -2,6 +2,7 @@ import {
   type AnyColumn,
   type SQL,
   and,
+  asc,
   desc,
   eq,
   getTableColumns,
@@ -26,6 +27,7 @@ import {
   solutions,
   solverProfiles,
   studentProfiles,
+  subjects,
   user,
 } from "../../db/schema";
 import type { Auth } from "../../lib/auth";
@@ -669,14 +671,21 @@ export class AdminService {
   async analytics(query: RangeQuery) {
     const filters = this.rangeFilters(query);
 
+    // Only subjects with answers in the range, busiest first, named and
+    // with their class — the chart draws exactly this.
     const perSubject = await this.db
       .select({
         subjectId: questions.subjectId,
+        subject: subjects.nameEn,
+        level: levels.nameEn,
         total: sql<number>`count(*)::int`,
       })
       .from(questions)
+      .innerJoin(subjects, eq(subjects.id, questions.subjectId))
+      .leftJoin(levels, eq(levels.id, subjects.levelId))
       .where(and(...filters))
-      .groupBy(questions.subjectId);
+      .groupBy(questions.subjectId, subjects.nameEn, subjects.sort, levels.nameEn, levels.sort)
+      .orderBy(desc(sql`count(*)`), asc(levels.sort), asc(subjects.sort));
 
     const [totals] = await this.db
       .select({
@@ -691,7 +700,9 @@ export class AdminService {
 
     const trend = await this.db
       .select({
-        day: sql<string>`date_trunc('day', ${questions.answeredAt})::date`,
+        // As text: a `date` column arrives as a JS Date, which serialises
+        // to "…T00:00:00.000Z" and never matches the chart's day keys.
+        day: sql<string>`to_char(date_trunc('day', ${questions.answeredAt}), 'YYYY-MM-DD')`,
         total: sql<number>`count(*)::int`,
       })
       .from(questions)
@@ -710,10 +721,7 @@ export class AdminService {
       .where(and(...filters, isNull(solutions.deletedAt)));
 
     return {
-      perSubject: perSubject.map((r) => ({
-        subjectId: r.subjectId,
-        total: r.total,
-      })),
+      perSubject,
       satisfaction: {
         satisfied: totals?.satisfied ?? 0,
         unsatisfied: totals?.unsatisfied ?? 0,
