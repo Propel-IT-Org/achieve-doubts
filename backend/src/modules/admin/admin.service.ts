@@ -21,6 +21,7 @@ import {
   auditLog,
   batches,
   levels,
+  lockEvents,
   payoutLines,
   payoutPeriods,
   questions,
@@ -58,6 +59,23 @@ function upperBound(column: AnyColumn, to: string) {
   const nextDay = new Date(`${to}T00:00:00Z`);
   nextDay.setUTCDate(nextDay.getUTCDate() + 1);
   return lt(column, nextDay);
+}
+
+/**
+ * A range as two instants for raw SQL: from inclusive, to exclusive. A
+ * date-only `to` means that whole day, as upperBound does; a missing end is
+ * open (null, which the SQL reads as ±infinity).
+ */
+function rangeInstants(query: { from?: string; to?: string }) {
+  const from = query.from ? new Date(query.from) : null;
+  let to: Date | null = null;
+  if (query.to && DATE_ONLY.test(query.to)) {
+    to = new Date(`${query.to}T00:00:00Z`);
+    to.setUTCDate(to.getUTCDate() + 1);
+  } else if (query.to) {
+    to = new Date(new Date(query.to).getTime() + 1);
+  }
+  return { from, to };
 }
 
 /** The last instant a range includes, for storing it on a payout period. */
@@ -731,6 +749,145 @@ export class AdminService {
       avgMatchSeconds: totals?.avgMatchSec ?? null,
       avgResponseMinutes: resp?.avgMinutes ?? null,
       trend: trend.map((r) => ({ day: r.day, total: r.total })),
+    };
+  }
+
+  /**
+   * Lock behaviour per solver over a range, for spotting hoarding: holding
+   * several questions at once, or locking and letting locks run out.
+   *
+   * A lock's span runs from its lock (or takeover) event until the first of:
+   * the question's next lock event (unlock, expiry, takeover, re-lock), that
+   * solver's solution, the question's deletion, or now. Peak and "time
+   * holding 2+" come from sweeping those spans in time order. Only spans
+   * that start inside the range count.
+   *
+   * `current` is live, not ranged: who holds more than one question now.
+   */
+  async lockActivity(query: RangeQuery) {
+    const { from, to } = rangeInstants(query);
+    const lower = sql`coalesce(${from}::timestamp, '-infinity'::timestamp)`;
+    const upper = sql`coalesce(${to}::timestamp, 'infinity'::timestamp)`;
+    const solverFilter = query.solver ? sql`and c.solver_id = ${query.solver}` : sql``;
+
+    const perSolver = await this.db.execute<{
+      solverId: string;
+      name: string;
+      locks: number;
+      answered: number;
+      unlocked: number;
+      expired: number;
+      takenOver: number;
+      peakHeld: number;
+      multiMinutes: number;
+    }>(sql`
+      with ev as (
+        select le.id, le.question_id, le.solver_id, le.action, le.at,
+               lead(le.at) over (partition by le.question_id order by le.at, le.id) as next_at
+        from ${lockEvents} le
+      ),
+      spans as (
+        select ev.solver_id, ev.at as start_at,
+               least(
+                 coalesce(ev.next_at, 'infinity'::timestamp),
+                 coalesce(case when s.solver_id = ev.solver_id and s.created_at >= ev.at
+                               then s.created_at end, 'infinity'::timestamp),
+                 coalesce(case when q.deleted_at >= ev.at then q.deleted_at end,
+                          'infinity'::timestamp),
+                 now()::timestamp
+               ) as end_at
+        from ev
+        join ${questions} q on q.id = ev.question_id
+        left join ${solutions} s on s.question_id = ev.question_id
+        where ev.action in ('lock', 'override')
+          and ev.at >= ${lower} and ev.at < ${upper}
+      ),
+      points as (
+        select solver_id, start_at as t, 1 as d from spans
+        union all
+        select solver_id, end_at as t, -1 as d from spans
+      ),
+      running as (
+        -- At equal times an end (-1) sorts before a start (+1): a lock taken
+        -- the instant another ends is not two at once.
+        select solver_id, t,
+               sum(d) over (partition by solver_id order by t, d
+                            rows between unbounded preceding and current row) as held,
+               lead(t) over (partition by solver_id order by t, d) as next_t
+        from points
+      ),
+      peaks as (
+        select solver_id,
+               max(held)::int as peak_held,
+               (coalesce(sum(extract(epoch from (next_t - t))) filter (where held >= 2), 0) / 60)::float8
+                 as multi_minutes
+        from running
+        group by solver_id
+      ),
+      counts as (
+        select solver_id,
+               count(*) filter (where action in ('lock', 'override'))::int as locks,
+               count(*) filter (where action = 'unlock')::int as unlocked,
+               count(*) filter (where action = 'expire')::int as expired
+        from ${lockEvents}
+        where at >= ${lower} and at < ${upper}
+        group by solver_id
+      ),
+      answered as (
+        select solver_id, count(*)::int as answered
+        from ${solutions}
+        where deleted_at is null and created_at >= ${lower} and created_at < ${upper}
+        group by solver_id
+      ),
+      taken as (
+        select meta->>'previousSolverId' as solver_id, count(*)::int as taken_over
+        from ${auditLog}
+        where action = 'question.override' and at >= ${lower} and at < ${upper}
+        group by 1
+      )
+      select c.solver_id as "solverId",
+             u.name,
+             c.locks,
+             coalesce(a.answered, 0)::int as answered,
+             c.unlocked,
+             c.expired,
+             coalesce(t.taken_over, 0)::int as "takenOver",
+             coalesce(p.peak_held, 0)::int as "peakHeld",
+             coalesce(p.multi_minutes, 0)::float8 as "multiMinutes"
+      from counts c
+      join ${user} u on u.id = c.solver_id
+      left join answered a on a.solver_id = c.solver_id
+      left join taken t on t.solver_id = c.solver_id
+      left join peaks p on p.solver_id = c.solver_id
+      where c.locks > 0 ${solverFilter}
+      order by "peakHeld" desc, "multiMinutes" desc, c.expired desc, u.name asc
+    `);
+
+    // Live: anyone holding more than one question right now — the ones to
+    // act on. The lock rule stops new ones; these predate it or are mid-way.
+    const current = await this.db.execute<{
+      solverId: string;
+      name: string;
+      questionIds: string;
+    }>(sql`
+      select q.solver_id as "solverId",
+             u.name,
+             string_agg(q.id::text, ',' order by q.locked_at) as "questionIds"
+      from ${questions} q
+      join ${user} u on u.id = q.solver_id
+      where q.status = 'assigned' and q.deleted_at is null
+      group by q.solver_id, u.name
+      having count(*) > 1
+      order by count(*) desc, u.name asc
+    `);
+
+    return {
+      perSolver: [...perSolver],
+      current: [...current].map((row) => ({
+        solverId: row.solverId,
+        name: row.name,
+        questionIds: row.questionIds.split(",").map(Number),
+      })),
     };
   }
 

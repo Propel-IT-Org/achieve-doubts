@@ -263,6 +263,13 @@ export const adminRouter = new Hono<AppEnv>()
     async (c) => c.json(await c.var.di.get("admin").analytics(c.req.valid("query"))),
   )
   .get(
+    "/analytics/locks",
+    requireAuth,
+    requirePermission({ analytics: ["list"] }),
+    zValidator("query", rangeQuerySchema, zodErrorHook),
+    async (c) => c.json(await c.var.di.get("admin").lockActivity(c.req.valid("query"))),
+  )
+  .get(
     "/analytics/rankings",
     requireAuth,
     requirePermission({ analytics: ["list"] }),
