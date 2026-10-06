@@ -27,6 +27,7 @@ import { env } from "../../env";
 import { containsPattern } from "../interaction/shared";
 import { isLockBlocked, pendingFollowupsWhere } from "../profiles/solver-stats.util";
 import type { TaxonomyService } from "../taxonomy/taxonomy.service";
+import { heldLock, serializeSolver } from "./solver-lock.util";
 import type {
   CreateQuestionInput,
   CursorPayload,
@@ -60,13 +61,15 @@ function encodeCursor(payload: CursorPayload): string {
 export type LockResult =
   | { ok: true; question: Question }
   | { ok: false; reason: "followup_block" }
+  | { ok: false; reason: "active_lock"; heldId: number }
   | { ok: false; reason: "conflict"; current: Question | null };
 
 export type SimpleResult = { ok: true; question: Question } | { ok: false };
 
 export type OverrideResult =
   | { ok: true; question: Question; previousSolverId: string | null }
-  | { ok: false };
+  | { ok: false; reason: "not_assigned" }
+  | { ok: false; reason: "active_lock"; heldId: number };
 
 export type CreateResult =
   | { ok: true; question: Question }
@@ -272,14 +275,16 @@ export class QuestionsService {
 
   async lockQuestion(questionId: number, solverId: string): Promise<LockResult> {
     return this.db.transaction(async (tx) => {
-      // Serializes concurrent lock attempts *by this solver* for the duration
-      // of the transaction, so the follow-up-block check below can't be
-      // raced. Keyed on the solver, so it never blocks a different solver —
-      // the contention that matters (two solvers racing for one question) is
-      // still resolved by the atomic UPDATE, not by this lock.
-      // (A plain count inside the transaction would not be enough on its own:
-      // under READ COMMITTED it doesn't block a concurrent writer.)
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${solverId}))`);
+      // Serializes this solver's lock-taking for the rest of the transaction,
+      // so neither check below can be raced (solver-lock.util.ts). Keyed on
+      // the solver, so it never blocks a different solver — two solvers
+      // racing for one question are still settled by the atomic UPDATE.
+      await serializeSolver(tx, solverId);
+
+      // One question at a time: a second lock would hide a question from
+      // every other solver while this one works on something else.
+      const held = await heldLock(tx, solverId, questionId);
+      if (held !== null) return { ok: false, reason: "active_lock", heldId: held };
 
       // The same predicate the dashboard lists, so "blocked" and "what's
       // blocking you" can never disagree.
@@ -388,6 +393,12 @@ export class QuestionsService {
     newSolverId: string,
   ): Promise<OverrideResult> {
     return this.db.transaction(async (tx) => {
+      // Taking a question over is taking a lock, so the same one-at-a-time
+      // rule applies to the admin solver doing it.
+      await serializeSolver(tx, newSolverId);
+      const held = await heldLock(tx, newSolverId, questionId);
+      if (held !== null) return { ok: false, reason: "active_lock", heldId: held };
+
       // FOR UPDATE: an unlock or expiry between this read and the UPDATE
       // below would otherwise notify a solver who no longer held the lock.
       const [existing] = await tx
@@ -413,7 +424,7 @@ export class QuestionsService {
         )
         .returning();
 
-      if (!updated) return { ok: false };
+      if (!updated) return { ok: false, reason: "not_assigned" };
 
       await tx.insert(lockEvents).values({
         questionId: updated.id,

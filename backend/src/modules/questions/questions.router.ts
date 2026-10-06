@@ -14,6 +14,7 @@ import {
   listQuestionsQuerySchema,
   questionIdParamSchema,
 } from "./questions.schema";
+import { lockLimitMessage } from "./solver-lock.util";
 
 export const questionsRouter = new Hono<AppEnv>()
   .get(
@@ -148,6 +149,9 @@ export const questionsRouter = new Hono<AppEnv>()
             "Answer your open follow-ups before locking new questions",
           );
         }
+        if (result.reason === "active_lock") {
+          return fail(c, 409, "LOCK_LIMIT", lockLimitMessage(result.heldId));
+        }
         // Carries who currently holds the lock on top of the standard
         // envelope, so the UI can name them instead of saying "unavailable".
         return c.json(
@@ -206,7 +210,9 @@ export const questionsRouter = new Hono<AppEnv>()
         .overrideQuestion(id, c.var.user.id);
 
       if (!result.ok) {
-        return fail(c, 409, "CONFLICT", "Question is not currently assigned");
+        return result.reason === "active_lock"
+          ? fail(c, 409, "LOCK_LIMIT", lockLimitMessage(result.heldId))
+          : fail(c, 409, "CONFLICT", "Question is not currently assigned");
       }
 
       c.var.di.get("feed").broadcast("QUESTION_OVERRIDDEN", {

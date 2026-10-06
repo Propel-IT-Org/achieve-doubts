@@ -2,12 +2,14 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import type { DB } from "../../db";
 import {
   auditLog,
+  lockEvents,
   notifications,
   questions,
   solutions,
   threadMessages,
 } from "../../db/schema";
 import { env } from "../../env";
+import { heldLock, serializeSolver } from "../questions/solver-lock.util";
 import type { CreateSolutionInput } from "./solutions.schema";
 
 export type SubmitSolutionResult =
@@ -140,7 +142,15 @@ export class SolutionsService {
         .set({ deletedAt: new Date(), deletedBy: actorId })
         .where(eq(solutions.id, solution.id));
 
-      const reopen = solution.solverId !== actorId;
+      // An admin's delete reopens the question to everyone. The solver's
+      // own delete hands it back to them to redo — unless they have locked
+      // another question since answering this one: that would leave them
+      // holding two (solver-lock.util.ts), so then it reopens too.
+      let reopen = solution.solverId !== actorId;
+      if (!reopen) {
+        await serializeSolver(tx, actorId);
+        reopen = (await heldLock(tx, actorId, questionId)) !== null;
+      }
 
       const [question] = await tx
         .update(questions)
@@ -184,6 +194,10 @@ export class SolutionsService {
           questionId,
           actorId,
         });
+      } else {
+        // A new hold on the question, so the lock history (and the admin's
+        // lock-activity figures, which are built from it) shows it.
+        await tx.insert(lockEvents).values({ questionId, solverId: actorId, action: "lock" });
       }
 
       // A later resubmission hard-deletes this row, so the audit entry is the
