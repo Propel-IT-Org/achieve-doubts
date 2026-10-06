@@ -10,14 +10,17 @@ import {
   AnalyticsFiltersPlaceholder,
 } from "~/features/analytics/analytics-filters";
 import { AnalyticsCharts, AnalyticsMetrics } from "~/features/analytics/analytics-report";
+import { LockActivitySection } from "~/features/analytics/lock-activity";
 import { RANGE_ERROR, RangePicker, useRange } from "~/features/analytics/range-picker";
 import { SolverRankings } from "~/features/analytics/solver-rankings";
 import { daysAgo, isoDay } from "~/lib/format";
 import {
   analyticsKey,
   fetchAnalytics,
+  fetchLockActivity,
   fetchSolvers,
   fetchTaxonomy,
+  lockActivityKey,
   solversKey,
   taxonomyKey,
 } from "~/lib/queries";
@@ -38,6 +41,7 @@ export async function clientLoader({ request }: Route.ClientLoaderArgs) {
   preload(solversKey(), fetchSolvers);
   if (filters.from <= filters.to) {
     preload(analyticsKey(filters), () => fetchAnalytics(filters));
+    preload(lockActivityKey(filters), () => fetchLockActivity(filters));
   }
   return null;
 }
@@ -74,6 +78,7 @@ export default function AnalyticsPage() {
           <AsyncBoundary fallback={<CardsSkeleton count={3} />} errorText="Couldn't load the charts.">
             <AnalyticsCharts filters={filters} />
           </AsyncBoundary>
+          <LockActivitySection filters={filters} />
           <SolverRankings range={{ from, to, subject }} />
         </>
       )}

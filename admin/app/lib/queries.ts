@@ -285,6 +285,35 @@ export type Rankings = {
 
 export type RankingFilters = Omit<RangeFilters, "solver"> & { minAnswered: number };
 
+/** How solvers hold questions: GET /admin/analytics/locks. */
+export type LockActivity = {
+  /** Solvers who locked anything in the range; hoarders first. */
+  perSolver: Array<{
+    solverId: string;
+    name: string;
+    locks: number;
+    answered: number;
+    unlocked: number;
+    expired: number;
+    /** Times an admin solver took a question of theirs over. */
+    takenOver: number;
+    /** The most questions they held at the same moment. */
+    peakHeld: number;
+    /** Minutes spent holding two or more at once. */
+    multiMinutes: number;
+  }>;
+  /** Live, whatever the range: solvers holding more than one question now. */
+  current: Array<{ solverId: string; name: string; questionIds: number[] }>;
+};
+
+export const lockActivityKey = (f: RangeFilters) => ["lock-activity", f] as const;
+export const fetchLockActivity = (f: RangeFilters) =>
+  api.api.admin.analytics.locks
+    .$get({ query: rangeQuery(f) })
+    .then((r) => unwrap<LockActivity>(r));
+export const useLockActivity = (f: RangeFilters) =>
+  useSWR(lockActivityKey(f), () => fetchLockActivity(f)).data;
+
 export const rankingsKey = (f: RankingFilters) => ["rankings", f] as const;
 export const fetchRankings = (f: RankingFilters) =>
   api.api.admin.analytics.rankings
