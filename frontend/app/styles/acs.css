@@ -211,7 +211,8 @@
 .acs .qc.compact{padding:16px;border-radius:18px}
 .acs .qc.compact .qc-q{-webkit-line-clamp:2;font-size:15.5px}
 .acs .qc.compact .qc-thumb{width:72px;height:54px}
-.acs .cards{display:grid;grid-template-columns:1fr;gap:14px;align-items:start}
+/* stretch, not the prototype's start: cards side by side end level (QA sheet row 11). */
+.acs .cards{display:grid;grid-template-columns:1fr;gap:14px;align-items:stretch}
 .acs .cards > *{min-width:0}
 @media (min-width:640px){
   .acs .qc{padding:24px;border-radius:24px}
@@ -802,11 +803,15 @@
 .acs .crop-dialog::backdrop{background:rgba(12,22,54,.55)}
 .acs .crop-head .h3{margin:0}
 .acs .crop-head p{margin:4px 0 0;font-size:14px}
-.acs .crop-stage{height:min(58dvh,560px);display:flex;align-items:center;justify-content:center;background:var(--panel);border-radius:14px;overflow:hidden}
-.acs .crop-picture{position:relative;line-height:0;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+/* The stage clips the dimming; its padding is room for the corner handles,
+   which sit on the photo's edges when the frame covers the whole photo. */
+.acs .crop-stage{height:min(58dvh,560px);box-sizing:border-box;padding:16px;display:flex;align-items:center;justify-content:center;background:var(--panel);border-radius:14px;overflow:hidden}
+.acs .crop-picture{position:relative;line-height:0;touch-action:none;user-select:none;-webkit-user-select:none}
 .acs .crop-frame{position:absolute;box-sizing:border-box;margin:0;padding:0;background:none;appearance:none;border:2px solid #fff;box-shadow:0 0 0 9999px rgba(12,22,54,.55);cursor:move;outline:none}
 .acs .crop-frame:focus-visible{border-color:var(--gold)}
 .acs .crop-handle{position:absolute;width:22px;height:22px;background:#fff;border:2px solid var(--navy);border-radius:50%;touch-action:none}
+/* A fingertip-sized target around the 22px dot. */
+.acs .crop-handle::before{content:"";position:absolute;inset:-11px}
 .acs .crop-handle.nw{left:-11px;top:-11px;cursor:nwse-resize}
 .acs .crop-handle.ne{right:-11px;top:-11px;cursor:nesw-resize}
 .acs .crop-handle.sw{left:-11px;bottom:-11px;cursor:nesw-resize}

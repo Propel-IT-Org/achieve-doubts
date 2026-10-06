@@ -144,7 +144,11 @@ function CropDialog({
     if (!canvas || !stage) return;
 
     const { width, height } = turnedSize(bitmap, rotation);
-    const fit = Math.min(stage.clientWidth / width, stage.clientHeight / height, 1);
+    // The stage's padding is room for the corner handles, not for the photo.
+    const style = getComputedStyle(stage);
+    const roomX = stage.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    const roomY = stage.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+    const fit = Math.min(roomX / width, roomY / height, 1);
     const cssWidth = Math.max(1, Math.round(width * fit));
     const cssHeight = Math.max(1, Math.round(height * fit));
     const density = window.devicePixelRatio || 1;
