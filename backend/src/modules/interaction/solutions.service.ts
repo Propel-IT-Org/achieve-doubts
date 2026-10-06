@@ -2,14 +2,11 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import type { DB } from "../../db";
 import {
   auditLog,
-  lockEvents,
   notifications,
   questions,
   solutions,
   threadMessages,
 } from "../../db/schema";
-import { env } from "../../env";
-import { heldLock, serializeSolver } from "../questions/solver-lock.util";
 import type { CreateSolutionInput } from "./solutions.schema";
 
 export type SubmitSolutionResult =
@@ -108,12 +105,11 @@ export class SolutionsService {
 
   /**
    * Soft-deletes the solution, clears the rating and hard-deletes the
-   * follow-up thread. What happens to the question depends on who deleted:
-   *
-   *   - its own solver: back to `assigned` to them, with a fresh lock, so
-   *     they can submit a corrected solution (or unlock);
-   *   - a moderator removing someone else's: back to `waiting` with no
-   *     solver — reopened for every solver, and the asker is told.
+   * follow-up thread, and reopens the question: back to `waiting` with no
+   * solver, for every solver to lock, and the asker is told. That holds
+   * whoever deletes it — the solver themself or a moderator (QA sheet rows 9
+   * and 12). Handing it back to its own solver would also have let them hold
+   * it alongside a question they locked since (solver-lock.util.ts).
    *
    * `canDeleteAny` comes from the caller's role; an ordinary solver may only
    * delete their own.
@@ -142,40 +138,17 @@ export class SolutionsService {
         .set({ deletedAt: new Date(), deletedBy: actorId })
         .where(eq(solutions.id, solution.id));
 
-      // An admin's delete reopens the question to everyone. The solver's
-      // own delete hands it back to them to redo — unless they have locked
-      // another question since answering this one: that would leave them
-      // holding two (solver-lock.util.ts), so then it reopens too.
-      let reopen = solution.solverId !== actorId;
-      if (!reopen) {
-        await serializeSolver(tx, actorId);
-        reopen = (await heldLock(tx, actorId, questionId)) !== null;
-      }
-
       const [question] = await tx
         .update(questions)
-        .set(
-          reopen
-            ? {
-                status: "waiting",
-                solverId: null,
-                lockedAt: null,
-                lockExpiresAt: null,
-                matchedAfterSec: null,
-                ratedAt: null,
-                answeredAt: null,
-              }
-            : {
-                status: "assigned",
-                ratedAt: null,
-                answeredAt: null,
-                // Restart the lock clock. The old expiry is usually long past
-                // by now, and keeping it would let the sweeper reclaim the
-                // question within seconds — from the solver redoing it.
-                lockedAt: sql`now()`,
-                lockExpiresAt: sql`now() + (${env.LOCK_TIMEOUT_MINUTES} * interval '1 minute')`,
-              },
-        )
+        .set({
+          status: "waiting",
+          solverId: null,
+          lockedAt: null,
+          lockExpiresAt: null,
+          matchedAfterSec: null,
+          ratedAt: null,
+          answeredAt: null,
+        })
         .where(eq(questions.id, questionId))
         .returning();
 
@@ -187,18 +160,12 @@ export class SolutionsService {
         .delete(threadMessages)
         .where(eq(threadMessages.questionId, questionId));
 
-      if (reopen) {
-        await tx.insert(notifications).values({
-          type: "released",
-          userId: question.askerId,
-          questionId,
-          actorId,
-        });
-      } else {
-        // A new hold on the question, so the lock history (and the admin's
-        // lock-activity figures, which are built from it) shows it.
-        await tx.insert(lockEvents).values({ questionId, solverId: actorId, action: "lock" });
-      }
+      await tx.insert(notifications).values({
+        type: "released",
+        userId: question.askerId,
+        questionId,
+        actorId,
+      });
 
       // A later resubmission hard-deletes this row, so the audit entry is the
       // lasting record of what was removed and by whom.
@@ -210,7 +177,6 @@ export class SolutionsService {
         meta: {
           questionId,
           solverId: solution.solverId,
-          reopened: reopen,
           text: solution.text?.slice(0, 500) ?? null,
           imageUrl: solution.imageUrl,
           audioUrl: solution.audioUrl,

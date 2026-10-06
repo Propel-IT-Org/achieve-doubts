@@ -69,7 +69,6 @@ function SolutionBody({ id }: { id: number }) {
         solution={question.solution}
         isAssignedSolver={isAssignedSolver}
         canDelete={isAssignedSolver || isAdminSolver(user?.role)}
-        reopensOnDelete={!isAssignedSolver}
       />
     );
   }
@@ -104,15 +103,12 @@ function SolutionCard({
   solution,
   isAssignedSolver,
   canDelete,
-  reopensOnDelete,
 }: {
   id: number;
   question: QuestionDetail;
   solution: SolutionRow;
   isAssignedSolver: boolean;
   canDelete: boolean;
-  /** A moderator removing someone else's solution reopens the question. */
-  reopensOnDelete: boolean;
 }) {
   const remove = useDeleteSolution(id);
   const [confirming, setConfirming] = useState(false);
@@ -146,9 +142,9 @@ function SolutionCard({
       {confirming && (
         <div className="confirm" role="alertdialog" aria-label="Delete this solution?">
           <span style={{ flex: 1, minWidth: 220 }}>
-            {reopensOnDelete
-              ? "Delete this solution? The question reopens for every solver, and its rating and follow-ups are cleared."
-              : "Delete this solution? The rating and follow-ups are cleared."}
+            {/* Whoever deletes it, the question goes back to every solver. */}
+            Delete this solution? The question reopens for every solver, and its
+            rating and follow-ups are cleared.
           </span>
           <button
             type="button"
@@ -181,7 +177,8 @@ function SolutionCard({
       />
       {isAssignedSolver && (
         <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-          Solutions can't be edited. To change it, delete it and submit a new one.
+          Solutions can't be edited. Deleting it reopens the question for every
+          solver; lock it again to submit a new one.
         </p>
       )}
     </article>
