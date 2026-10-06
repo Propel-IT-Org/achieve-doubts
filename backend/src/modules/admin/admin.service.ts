@@ -22,6 +22,7 @@ import {
   batches,
   levels,
   lockEvents,
+  notifications,
   payoutLines,
   payoutPeriods,
   questions,
@@ -758,9 +759,17 @@ export class AdminService {
    *
    * A lock's span runs from its lock (or takeover) event until the first of:
    * the question's next lock event (unlock, expiry, takeover, re-lock), that
-   * solver's solution, the question's deletion, or now. Peak and "time
+   * solver answering it, the question's deletion, or now. Peak and "time
    * holding 2+" come from sweeping those spans in time order. Only spans
    * that start inside the range count.
+   *
+   * "Answering it" is read from the asker's `solved` notification, not the
+   * solutions table: a deleted solution is hard-deleted when the question is
+   * answered again, and with it would go the time the first solver's hold
+   * ended — stretching it to the next lock, hours or days later. The
+   * notification is written in the same transaction as the solution and
+   * never deleted, so it keeps that time. (Pruning notifications would
+   * break this; nothing does.)
    *
    * `current` is live, not ranged: who holds more than one question now.
    */
@@ -786,21 +795,33 @@ export class AdminService {
                lead(le.at) over (partition by le.question_id order by le.at, le.id) as next_at
         from ${lockEvents} le
       ),
+      solved as (
+        select question_id, actor_id, created_at
+        from ${notifications}
+        where type = 'solved'
+      ),
+      starts as (
+        select id, solver_id, question_id, at as start_at, next_at
+        from ev
+        where action in ('lock', 'override')
+          and at >= ${lower} and at < ${upper}
+      ),
       spans as (
-        select ev.solver_id, ev.at as start_at,
+        select st.solver_id, st.start_at,
                least(
-                 coalesce(ev.next_at, 'infinity'::timestamp),
-                 coalesce(case when s.solver_id = ev.solver_id and s.created_at >= ev.at
-                               then s.created_at end, 'infinity'::timestamp),
-                 coalesce(case when q.deleted_at >= ev.at then q.deleted_at end,
+                 coalesce(st.next_at, 'infinity'::timestamp),
+                 coalesce(min(sv.created_at), 'infinity'::timestamp),
+                 coalesce(case when q.deleted_at >= st.start_at then q.deleted_at end,
                           'infinity'::timestamp),
                  now()::timestamp
                ) as end_at
-        from ev
-        join ${questions} q on q.id = ev.question_id
-        left join ${solutions} s on s.question_id = ev.question_id
-        where ev.action in ('lock', 'override')
-          and ev.at >= ${lower} and ev.at < ${upper}
+        from starts st
+        join ${questions} q on q.id = st.question_id
+        left join solved sv
+          on sv.question_id = st.question_id
+         and sv.actor_id = st.solver_id
+         and sv.created_at >= st.start_at
+        group by st.id, st.solver_id, st.start_at, st.next_at, q.deleted_at
       ),
       points as (
         select solver_id, start_at as t, 1 as d from spans
